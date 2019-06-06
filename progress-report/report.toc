@@ -1,0 +1,8 @@
+\babel@toc {english}{}
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.2}
+\contentsline {section}{\numberline {1.1}Aims and Objectives}{2}{section.3}
+\contentsline {chapter}{\numberline {2}Background}{4}{chapter.5}
+\contentsline {section}{\numberline {2.1}Semantic Segmentation}{4}{section.6}
+\contentsline {section}{\numberline {2.2}Instance Segmentation}{4}{section.7}
+\contentsline {chapter}{\numberline {3}Project Setup and Plan}{5}{chapter.8}
+\contentsline {chapter}{\numberline {4}Conclusion}{6}{chapter.9}
