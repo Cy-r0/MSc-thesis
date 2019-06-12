@@ -1,0 +1,125 @@
+\begin{thebibliography}{10}
+
+\bibitem{staticfusion}
+R.~Scona, M.~Jaimez, Y.~R. Petillot, M.~Fallon, and D.~Cremers, ``Staticfusion:
+  Background reconstruction for dense rgb-d slam in dynamic environments,'' in
+  {\em Proceedings of the IEEE International Conference on Robotics and
+  Automation (2018)}.
+
+\bibitem{dynamicfusion}
+R.~Newcombe, D.~Fox, and S.~M. Seitz, ``Dynamicfusion: Reconstruction and
+  tracking of non-rigid scenes in real-time,'' in {\em Proc. IEEE Conf. Comput.
+  Vision Pattern Recog. (2015)}, pp.~343--352.
+
+\bibitem{fusion4d}
+M.~Dou, S.~Khamis, Y.~Degtyarev, P.~Davidson, S.~Fanello, A.~Kow-dle, S.~O.
+  Escolano, C.~Rhemann, D.~Kim, J.~Taylor, P.~Kohli, V.~Tankovich, and
+  S.~Izadi, ``Fusion4d: Real-time performance capture of challenging scenes,''
+  in {\em ACM SIGGRAPH Conference on Computer Graphics and Interactive
+  Techniques (2016)}.
+
+\bibitem{cofusion}
+M.~Runz and L.~Agapito, ``Co-fusion: Real-time segmentation, tracking and
+  fusion of multiple objects,''
+
+\bibitem{maskfusion}
+M.~Runz and L.~Agapito, ``Maskfusion: Real-time recognition, tracking and
+  reconstruction of multiple moving objects,'' {\em ArXiv preprint}, 2018.
+
+\bibitem{midfusion}
+B.~Xu, W.~Li, D.~Tzoumanikas, M.~Bloesch, A.~J. Davison, and S.~Leutenegger,
+  ``Mid-fusion: Octree-based object-level multi-instance dynamic {SLAM},'' {\em
+  CoRR}, vol.~abs/1812.07976, 2018.
+
+\bibitem{cnn}
+Y.~Lecun, L.~Bottou, Y.~Bengio, and P.~Haffner, ``Gradient-based learning
+  applied to document recognition,'' in {\em Proceedings of the IEEE},
+  pp.~2278--2324, 1998.
+
+\bibitem{encdec}
+``Learning deconvolution network for semantic segmentation.''
+  \url{http://cvlab.postech.ac.kr/research/deconvnet/}.
+\newblock Accessed: 2019-06-05.
+
+\bibitem{resnet}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun, ``Deep residual learning for image
+  recognition,'' {\em 2016 IEEE Conference on Computer Vision and Pattern
+  Recognition (CVPR)}, pp.~770--778, 2016.
+
+\bibitem{inceptionv4}
+C.~Szegedy, S.~Ioffe, and V.~Vanhoucke, ``Inception-v4, inception-resnet and
+  the impact of residual connections on learning,'' in {\em AAAI}, 2016.
+
+\bibitem{spp}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun, ``Spatial pyramid pooling in deep
+  convolutional networks for visual recognition,'' in {\em Computer Vision --
+  ECCV 2014} (D.~Fleet, T.~Pajdla, B.~Schiele, and T.~Tuytelaars, eds.),
+  pp.~346--361, Springer International Publishing, 2014.
+
+\bibitem{revisitingresnets}
+Z.~Wu, C.~Shen, and A.~Hengel, ``Wider or deeper: Revisiting the resnet model
+  for visual recognition,'' {\em Pattern Recognition}, vol.~90, 11 2016.
+
+\bibitem{deeplabv3+}
+L.-C. Chen, Y.~Zhu, G.~Papandreou, F.~Schroff, and H.~Adam, ``Encoder-decoder
+  with atrous separable convolution for semantic image segmentation,'' in {\em
+  ECCV}, 2018.
+
+\bibitem{rcnn}
+R.~{Girshick}, J.~{Donahue}, T.~{Darrell}, and J.~{Malik}, ``Rich feature
+  hierarchies for accurate object detection and semantic segmentation,'' in
+  {\em 2014 IEEE Conference on Computer Vision and Pattern Recognition},
+  pp.~580--587, June 2014.
+
+\bibitem{fastrcnn}
+R.~Girshick, ``Fast r-cnn,'' in {\em Proceedings of the 2015 IEEE International
+  Conference on Computer Vision (ICCV)}, ICCV '15, (Washington, DC, USA),
+  pp.~1440--1448, IEEE Computer Society, 2015.
+
+\bibitem{fasterrcnn}
+S.~Ren, K.~He, R.~Girshick, and J.~Sun, ``Faster r-cnn: Towards real-time
+  object detection with region proposal networks,'' in {\em Proceedings of the
+  28th International Conference on Neural Information Processing Systems -
+  Volume 1}, NIPS'15, (Cambridge, MA, USA), pp.~91--99, MIT Press, 2015.
+
+\bibitem{maskrcnn}
+K.~He, G.~Gkioxari, P.~Dollar, , and R.~Girshick, ``Mask r-cnn,'' in {\em
+  Proceedings of the International Conference on Computer Vision (2017)}.
+
+\bibitem{panet}
+S.~Liu, L.~Qi, H.~Qin, J.~Shi, and J.~Jia, ``Path aggregation network for
+  instance segmentation,'' {\em 2018 IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition}, pp.~8759--8768, 2018.
+
+\bibitem{semiconvolutional}
+D.~Novotn{\'{y}}, S.~Albanie, D.~Larlus, and A.~Vedaldi, ``Semi-convolutional
+  operators for instance segmentation,'' {\em CoRR}, vol.~abs/1807.10712, 2018.
+
+\bibitem{yolo}
+J.~Redmon, S.~K. Divvala, R.~B. Girshick, and A.~Farhadi, ``You only look once:
+  Unified, real-time object detection,'' {\em 2016 IEEE Conference on Computer
+  Vision and Pattern Recognition (CVPR)}, pp.~779--788, 2016.
+
+\bibitem{yolo9000}
+J.~Redmon and A.~Farhadi, ``Yolo9000: Better, faster, stronger,'' {\em 2017
+  IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pp.~6517--6525, 2017.
+
+\bibitem{yolov3}
+J.~Redmon and A.~Farhadi, ``Yolov3: An incremental improvement,'' {\em CoRR},
+  vol.~abs/1804.02767, 2018.
+
+\bibitem{ssd}
+W.~Liu, D.~Anguelov, D.~Erhan, C.~Szegedy, S.~E. Reed, C.-Y. Fu, and A.~C.
+  Berg, ``Ssd: Single shot multibox detector,'' in {\em ECCV}, 2016.
+
+\bibitem{yolact}
+D.~Bolya, C.~Zhou, F.~Xiao, and Y.~J. Lee, ``Yolact: Real-time instance
+  segmentation,'' {\em CoRR}, vol.~abs/1904.02689, 2019.
+
+\bibitem{deepwatershed}
+M.~Bai and R.~Urtasun, ``Deep watershed transform for instance segmentation,''
+  {\em 2017 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pp.~2858--2866, 2017.
+
+\end{thebibliography}

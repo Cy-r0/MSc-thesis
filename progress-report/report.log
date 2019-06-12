@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.18 (TeX Live 2017/Debian) (preloaded format=pdflatex 2019.6.3)  6 JUN 2019 00:22
+This is pdfTeX, Version 3.14159265-2.6-1.40.18 (TeX Live 2017/Debian) (preloaded format=pdflatex 2019.6.3)  10 JUN 2019 18:08
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -67,14 +67,7 @@ Grid set 16 x 16 = 37.34424pt x 52.81541pt
 \TPboxrulesize=\dimen115
 \TP@tbargs=\toks16
 \TP@prevdepth=\dimen116
-) (/usr/share/texlive/texmf-dist/tex/latex/natbib/natbib.sty
-Package: natbib 2010/09/13 8.31b (PWD, AO)
-\bibhang=\skip43
-\bibsep=\skip44
-LaTeX Info: Redefining \cite on input line 694.
-\c@NAT@ctr=\count91
-)
-(/usr/share/texlive/texmf-dist/tex/latex/tools/tabularx.sty
+) (/usr/share/texlive/texmf-dist/tex/latex/tools/tabularx.sty
 Package: tabularx 2016/02/03 v2.11 `tabularx' package (DPC)
 
 (/usr/share/texlive/texmf-dist/tex/latex/tools/array.sty
@@ -82,61 +75,61 @@ Package: array 2016/10/06 v2.4d Tabular extension package (FMi)
 \col@sep=\dimen117
 \extrarowheight=\dimen118
 \NC@list=\toks17
-\extratabsurround=\skip45
-\backup@length=\skip46
+\extratabsurround=\skip43
+\backup@length=\skip44
 )
 \TX@col@width=\dimen119
 \TX@old@table=\dimen120
 \TX@old@col=\dimen121
 \TX@target=\dimen122
 \TX@delta=\dimen123
-\TX@cols=\count92
+\TX@cols=\count91
 \TX@ftn=\toks18
 )
 (/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty
 Package: longtable 2014/10/28 v4.11 Multi-page Table package (DPC)
-\LTleft=\skip47
-\LTright=\skip48
-\LTpre=\skip49
-\LTpost=\skip50
-\LTchunksize=\count93
+\LTleft=\skip45
+\LTright=\skip46
+\LTpre=\skip47
+\LTpost=\skip48
+\LTchunksize=\count92
 \LTcapwidth=\dimen124
 \LT@head=\box27
 \LT@firsthead=\box28
 \LT@foot=\box29
 \LT@lastfoot=\box30
-\LT@cols=\count94
-\LT@rows=\count95
-\c@LT@tables=\count96
-\c@LT@chunks=\count97
+\LT@cols=\count93
+\LT@rows=\count94
+\c@LT@tables=\count95
+\c@LT@chunks=\count96
 \LT@p@ftn=\toks19
 )
 (/usr/share/texlive/texmf-dist/tex/latex/multirow/multirow.sty
 Package: multirow 2016/11/25 v2.2 Span multiple rows of a table
-\multirow@colwidth=\skip51
-\multirow@cntb=\count98
-\multirow@dima=\skip52
+\multirow@colwidth=\skip49
+\multirow@cntb=\count97
+\multirow@dima=\skip50
 \bigstrutjot=\dimen125
 )
 (/usr/share/texlive/texmf-dist/tex/latex/subfigure/subfigure.sty
 Package: subfigure 2002/03/15 v2.1.5 subfigure package
-\subfigtopskip=\skip53
-\subfigcapskip=\skip54
+\subfigtopskip=\skip51
+\subfigcapskip=\skip52
 \subfigcaptopadj=\dimen126
-\subfigbottomskip=\skip55
+\subfigbottomskip=\skip53
 \subfigcapmargin=\dimen127
-\subfiglabelskip=\skip56
-\c@subfigure=\count99
-\c@lofdepth=\count100
-\c@subtable=\count101
-\c@lotdepth=\count102
+\subfiglabelskip=\skip54
+\c@subfigure=\count98
+\c@lofdepth=\count99
+\c@subtable=\count100
+\c@lotdepth=\count101
 
 ****************************************
 * Local config file subfigure.cfg used *
 ****************************************
 (/usr/share/texlive/texmf-dist/tex/latex/subfigure/subfigure.cfg)
-\subfig@top=\skip57
-\subfig@bottom=\skip58
+\subfig@top=\skip55
+\subfig@bottom=\skip56
 )
 (/usr/share/texlive/texmf-dist/tex/latex/caption/caption.sty
 Package: caption 2016/02/21 v3.3-144 Customizing captions (AR)
@@ -152,7 +145,7 @@ Package caption3 Info: TeX engine: e-TeX on input line 67.
 \caption@parindent=\dimen133
 \caption@hangindent=\dimen134
 )
-\c@ContinuedFloat=\count103
+\c@ContinuedFloat=\count102
 Package caption Info: longtable package is loaded.
 
 (/usr/share/texlive/texmf-dist/tex/latex/caption/ltcaption.sty
@@ -164,15 +157,15 @@ Package caption Info: subfigure package is loaded.
 (/usr/share/texlive/texmf-dist/tex/latex/fancyhdr/fancyhdr.sty
 Package: fancyhdr 2017/06/30 v3.9a Extensive control of page headers and footer
 s
-\f@nch@headwidth=\skip59
-\f@nch@O@elh=\skip60
-\f@nch@O@erh=\skip61
-\f@nch@O@olh=\skip62
-\f@nch@O@orh=\skip63
-\f@nch@O@elf=\skip64
-\f@nch@O@erf=\skip65
-\f@nch@O@olf=\skip66
-\f@nch@O@orf=\skip67
+\f@nch@headwidth=\skip57
+\f@nch@O@elh=\skip58
+\f@nch@O@erh=\skip59
+\f@nch@O@olh=\skip60
+\f@nch@O@orh=\skip61
+\f@nch@O@elf=\skip62
+\f@nch@O@erf=\skip63
+\f@nch@O@olf=\skip64
+\f@nch@O@orf=\skip65
 )
 (/usr/share/texlive/texmf-dist/tex/latex/url/url.sty
 \Urlmuskip=\muskip10
@@ -189,11 +182,11 @@ Language: english 2017/06/06 v3.3r English support from the babel system
 
 (/usr/share/texlive/texmf-dist/tex/generic/babel/babel.def
 File: babel.def 2018/02/14 3.18 Babel common definitions
-\babel@savecnt=\count104
+\babel@savecnt=\count103
 \U@D=\dimen135
 
 (/usr/share/texlive/texmf-dist/tex/generic/babel/txtbabel.def)
-\bbl@dirlevel=\count105
+\bbl@dirlevel=\count104
 )
 \l@canadian = a dialect from \language\l@american 
 \l@australian = a dialect from \language\l@british 
@@ -201,7 +194,7 @@ File: babel.def 2018/02/14 3.18 Babel common definitions
 ))
 (/usr/share/texlive/texmf-dist/tex/latex/amsmath/amsmath.sty
 Package: amsmath 2017/09/02 v2.17a AMS math features
-\@mathmargin=\skip68
+\@mathmargin=\skip66
 
 For additional information on amsmath, use the `?' option.
 (/usr/share/texlive/texmf-dist/tex/latex/amsmath/amstext.sty
@@ -219,13 +212,13 @@ Package: amsbsy 1999/11/29 v1.2d Bold Symbols
 (/usr/share/texlive/texmf-dist/tex/latex/amsmath/amsopn.sty
 Package: amsopn 2016/03/08 v2.02 operator names
 )
-\inf@bad=\count106
+\inf@bad=\count105
 LaTeX Info: Redefining \frac on input line 213.
-\uproot@=\count107
-\leftroot@=\count108
+\uproot@=\count106
+\leftroot@=\count107
 LaTeX Info: Redefining \overline on input line 375.
-\classnum@=\count109
-\DOTSCASE@=\count110
+\classnum@=\count108
+\DOTSCASE@=\count109
 LaTeX Info: Redefining \ldots on input line 472.
 LaTeX Info: Redefining \dots on input line 475.
 LaTeX Info: Redefining \cdots on input line 596.
@@ -234,15 +227,15 @@ LaTeX Info: Redefining \cdots on input line 596.
 \big@size=\dimen138
 LaTeX Font Info:    Redeclaring font encoding OML on input line 712.
 LaTeX Font Info:    Redeclaring font encoding OMS on input line 713.
-\macc@depth=\count111
-\c@MaxMatrixCols=\count112
+\macc@depth=\count110
+\c@MaxMatrixCols=\count111
 \dotsspace@=\muskip11
-\c@parentequation=\count113
-\dspbrk@lvl=\count114
+\c@parentequation=\count112
+\dspbrk@lvl=\count113
 \tag@help=\toks21
-\row@=\count115
-\column@=\count116
-\maxfields@=\count117
+\row@=\count114
+\column@=\count115
+\maxfields@=\count116
 \andhelp@=\toks22
 \eqnshift@=\dimen139
 \alignsep@=\dimen140
@@ -251,8 +244,8 @@ LaTeX Font Info:    Redeclaring font encoding OMS on input line 713.
 \totwidth@=\dimen143
 \lineht@=\dimen144
 \@envbody=\toks23
-\multlinegap=\skip69
-\multlinetaggap=\skip70
+\multlinegap=\skip67
+\multlinetaggap=\skip68
 \mathdisplay@stack=\toks24
 LaTeX Info: Redefining \[ on input line 2817.
 LaTeX Info: Redefining \] on input line 2818.
@@ -399,13 +392,13 @@ Package: hycolor 2016/05/16 v1.8 Color options for hyperref/bookmark (HO)
 Package: auxhook 2016/05/16 v1.4 Hooks for auxiliary files (HO)
 )
 \@linkdim=\dimen147
-\Hy@linkcounter=\count118
-\Hy@pagecounter=\count119
+\Hy@linkcounter=\count117
+\Hy@pagecounter=\count118
 
 (/usr/share/texlive/texmf-dist/tex/latex/hyperref/pd1enc.def
 File: pd1enc.def 2018/02/06 v6.86b Hyperref: PDFDocEncoding definition (HO)
 )
-\Hy@SavedSpaceFactor=\count120
+\Hy@SavedSpaceFactor=\count119
 
 (/usr/share/texlive/texmf-dist/tex/latex/latexconfig/hyperref.cfg
 File: hyperref.cfg 2002/06/06 v1.2 hyperref configuration of TeXLive
@@ -419,10 +412,10 @@ Package hyperref Info: Plain pages OFF on input line 4524.
 Package hyperref Info: Backreferencing ON on input line 4527.
 Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
 Package hyperref Info: Bookmarks ON on input line 4762.
-\c@Hy@tempcnt=\count121
+\c@Hy@tempcnt=\count120
 LaTeX Info: Redefining \url on input line 5115.
 \XeTeXLinkMargin=\dimen148
-\Fld@menulength=\count122
+\Fld@menulength=\count121
 \Field@Width=\dimen149
 \Fld@charsize=\dimen150
 Package hyperref Info: Hyper figures OFF on input line 6369.
@@ -434,17 +427,17 @@ Package hyperref Info: Link coloring with OCG OFF on input line 6394.
 Package hyperref Info: PDF/A mode OFF on input line 6399.
 LaTeX Info: Redefining \ref on input line 6439.
 LaTeX Info: Redefining \pageref on input line 6443.
-\Hy@abspage=\count123
-\c@Item=\count124
-\c@Hfootnote=\count125
+\Hy@abspage=\count122
+\c@Item=\count123
+\c@Hfootnote=\count124
 )
 Package hyperref Info: Driver: hpdftex.
 
 (/usr/share/texlive/texmf-dist/tex/latex/hyperref/hpdftex.def
 File: hpdftex.def 2018/02/06 v6.86b Hyperref driver for pdfTeX
-\Fld@listcount=\count126
-\c@bookmark@seq@number=\count127
-\Hy@SectionHShift=\skip71
+\Fld@listcount=\count125
+\c@bookmark@seq@number=\count126
+\Hy@SectionHShift=\skip69
 )
 Package hyperref Info: Option `bookmarksnumbered' set `true' on input line 47.
 Package hyperref Info: Option `bookmarksopen' set `true' on input line 47.
@@ -513,19 +506,18 @@ Package caption Info: hypcap package is loaded.
 Package caption Info: End \AtBeginDocument code.
 (/usr/share/texlive/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
-\scratchcounter=\count128
+\scratchcounter=\count127
 \scratchdimen=\dimen151
 \scratchbox=\box33
-\nofMPsegments=\count129
-\nofMParguments=\count130
+\nofMPsegments=\count128
+\nofMParguments=\count129
 \everyMPshowfont=\toks25
-\MPscratchCnt=\count131
+\MPscratchCnt=\count130
 \MPscratchDim=\dimen152
-\MPnumerator=\count132
-\makeMPintoPDFobject=\count133
+\MPnumerator=\count131
+\makeMPintoPDFobject=\count132
 \everyMPtoPDFconversion=\toks26
 )
-Package backref Info: ** backref set up for natbib ** on input line 24.
 \AtBeginShipoutBox=\box34
  (/usr/share/texlive/texmf-dist/tex/latex/graphics/color.sty
 Package: color 2016/07/10 v1.1e Standard LaTeX Color (DPC)
@@ -543,7 +535,7 @@ Package: nameref 2016/05/21 v2.44 Cross-referencing by name of section
 (/usr/share/texlive/texmf-dist/tex/generic/oberdiek/gettitlestring.sty
 Package: gettitlestring 2016/05/16 v1.5 Cleanup title references (HO)
 )
-\c@section@level=\count134
+\c@section@level=\count133
 )
 LaTeX Info: Redefining \ref on input line 24.
 LaTeX Info: Redefining \pageref on input line 24.
@@ -554,7 +546,7 @@ LaTeX Info: Redefining \nameref on input line 24.
 \openout3 = `report.out'.
 
  (./titlepage.tex
-<./figures/imperial.pdf, id=32, 362.35374pt x 95.35625pt>
+<./figures/imperial.pdf, id=43, 362.35374pt x 95.35625pt>
 File: ./figures/imperial.pdf Graphic file (type pdf)
 <use ./figures/imperial.pdf>
 Package pdftex.def Info: ./figures/imperial.pdf  used on input line 11.
@@ -609,68 +601,284 @@ Underfull \hbox (badness 10000) in paragraph at lines 70--72
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 73--77
-
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 73--77
+Underfull \hbox (badness 10000) in paragraph at lines 73--75
 
  []
 
 [1
 
 ]
+Underfull \hbox (badness 10000) in paragraph at lines 76--79
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 76--79
+
+ []
+
 LaTeX Font Info:    Font shape `OT1/bch/bx/n' in size <17.28> not available
-(Font)              Font shape `OT1/bch/b/n' tried instead on input line 78.
- [2]
-File: ./figures/imperial.pdf Graphic file (type pdf)
-<use ./figures/imperial.pdf>
-Package pdftex.def Info: ./figures/imperial.pdf  used on input line 97.
-(pdftex.def)             Requested size: 175.26622pt x 46.12257pt.
-LaTeX Font Info:    Font shape `OT1/bch/bx/n' in size <10.95> not available
-(Font)              Font shape `OT1/bch/b/n' tried instead on input line 98.
- [3]
+(Font)              Font shape `OT1/bch/b/n' tried instead on input line 80.
+[2] [3]
 Chapter 2.
+
+Underfull \hbox (badness 10000) in paragraph at lines 102--104
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 109--111
+
+ []
+
+<./figures/cnn-ed.png, id=101, 1606.0pt x 899.36pt>
+File: ./figures/cnn-ed.png Graphic file (type png)
+<use ./figures/cnn-ed.png>
+Package pdftex.def Info: ./figures/cnn-ed.png  used on input line 114.
+(pdftex.def)             Requested size: 438.17227pt x 245.36922pt.
+LaTeX Font Info:    Font shape `OT1/bch/bx/n' in size <10.95> not available
+(Font)              Font shape `OT1/bch/b/n' tried instead on input line 115.
 [4
 
 ]
+Underfull \hbox (badness 10000) in paragraph at lines 119--121
+
+ []
+
+<./figures/skip-connections.png, id=116, 1655.18375pt x 374.39874pt>
+File: ./figures/skip-connections.png Graphic file (type png)
+<use ./figures/skip-connections.png>
+Package pdftex.def Info: ./figures/skip-connections.png  used on input line 124
+.
+(pdftex.def)             Requested size: 460.08221pt x 104.0654pt.
+
+Overfull \hbox (21.90994pt too wide) in paragraph at lines 124--125
+ [][] 
+ []
+
+[5 <./figures/cnn-ed.png>]
+Underfull \hbox (badness 10000) in paragraph at lines 134--136
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 137--139
+
+ []
+
+[6 <./figures/skip-connections.png>]
+Underfull \hbox (badness 10000) in paragraph at lines 140--142
+
+ []
+
+<./figures/faster-rcnn.png, id=147, 853.1875pt x 861.2175pt>
+File: ./figures/faster-rcnn.png Graphic file (type png)
+<use ./figures/faster-rcnn.png>
+Package pdftex.def Info: ./figures/faster-rcnn.png  used on input line 149.
+(pdftex.def)             Requested size: 153.36296pt x 154.8022pt.
+
+Underfull \hbox (badness 10000) in paragraph at lines 154--157
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 154--157
+
+ []
+
+[7 <./figures/faster-rcnn.png>]
+Underfull \hbox (badness 10000) in paragraph at lines 158--160
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 161--163
+
+ []
+
+<./figures/maskrcnn.png, id=160, 1721.43124pt x 841.1425pt>
+File: ./figures/maskrcnn.png Graphic file (type png)
+<use ./figures/maskrcnn.png>
+Package pdftex.def Info: ./figures/maskrcnn.png  used on input line 168.
+(pdftex.def)             Requested size: 438.17227pt x 214.09703pt.
+
+Underfull \hbox (badness 10000) in paragraph at lines 173--175
+
+ []
+
+[8 <./figures/maskrcnn.png>]
+Underfull \hbox (badness 10000) in paragraph at lines 178--180
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 181--183
+
+ []
+
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [9]
+Underfull \hbox (badness 10000) in paragraph at lines 184--187
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 184--187
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 188--190
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 191--193
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 196--198
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 199--201
+
+ []
+
+[10]
+Underfull \hbox (badness 10000) in paragraph at lines 204--206
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 207--209
+
+ []
+
+<./figures/dwt.png, id=193, 1113.15875pt x 366.36874pt>
+File: ./figures/dwt.png Graphic file (type png)
+<use ./figures/dwt.png>
+Package pdftex.def Info: ./figures/dwt.png  used on input line 212.
+(pdftex.def)             Requested size: 324.24988pt x 106.71939pt.
+[11 <./figures/dwt.png>] [12]
 Chapter 3.
-[5
+
+Underfull \hbox (badness 10000) in paragraph at lines 225--227
+
+ []
+
+<./figures/gantt.png, id=209, 508.90125pt x 1212.53pt>
+File: ./figures/gantt.png Graphic file (type png)
+<use ./figures/gantt.png>
+Package pdftex.def Info: ./figures/gantt.png  used on input line 230.
+(pdftex.def)             Requested size: 284.8093pt x 678.62364pt.
+
+LaTeX Warning: Float too large for page by 37.9878pt on input line 233.
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 235--237
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 238--240
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 241--243
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 244--246
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 252--254
+
+ []
+
+
+Underfull \vbox (badness 1755) has occurred while \output is active []
+
+ [13
 
 ]
+[14 <./figures/gantt.png>]
+Underfull \hbox (badness 10000) in paragraph at lines 263--266
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 263--266
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 267--269
+
+ []
+
+[15]
 Chapter 4.
-Package atveryend Info: Empty hook `BeforeClearDocument' on input line 135.
-[6
 
-]
-Package atveryend Info: Empty hook `AfterLastShipout' on input line 135.
+Underfull \hbox (badness 10000) in paragraph at lines 275--277
+
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 278--280
+
+ []
+
+[16
+
+] (./report.bbl (./report.brf)
+\tf@brf=\write5
+\openout5 = `report.brf'.
+
+ [17
+
+
+] [18])
+Package atveryend Info: Empty hook `BeforeClearDocument' on input line 292.
+ [19]
+Package atveryend Info: Empty hook `AfterLastShipout' on input line 292.
  (./report.aux)
-Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 135.
-Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 135.
+Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 292.
+Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 292.
 Package rerunfilecheck Info: File `report.out' has not changed.
-(rerunfilecheck)             Checksum: EDFB5EA0B445458D874073A7C3FA7B9B;400.
-Package atveryend Info: Empty hook `AtVeryVeryEnd' on input line 135.
+(rerunfilecheck)             Checksum: 82CC2010D17B38470B1BE9FE10F3DB3D;553.
+Package rerunfilecheck Info: File `report.brf' has not changed.
+(rerunfilecheck)             Checksum: EE106EBB68D79ABB707A0E9BEC47C6BA;1422.
+Package atveryend Info: Empty hook `AtVeryVeryEnd' on input line 292.
  ) 
 Here is how much of TeX's memory you used:
- 8946 strings out of 494880
- 133482 string characters out of 6179602
- 231747 words of memory out of 5000000
- 12061 multiletter control sequences out of 15000+600000
- 33491 words of font info for 59 fonts, out of 8000000 for 9000
+ 8829 strings out of 494880
+ 132455 string characters out of 6179602
+ 227986 words of memory out of 5000000
+ 11888 multiletter control sequences out of 15000+600000
+ 33660 words of font info for 60 fonts, out of 8000000 for 9000
  36 hyphenation exceptions out of 8191
- 44i,11n,43p,955b,413s stack positions out of 5000i,500n,10000p,200000b,80000s
+ 44i,12n,45p,1924b,448s stack positions out of 5000i,500n,10000p,200000b,80000s
 {/usr/share/texlive/texmf-dist/fonts/enc/dvips/base/8r.enc}</usr/share/texliv
 e/texmf-dist/fonts/type1/bitstrea/charter/bchb8a.pfb></usr/share/texlive/texmf-
 dist/fonts/type1/bitstrea/charter/bchr8a.pfb></usr/share/texlive/texmf-dist/fon
 ts/type1/bitstrea/charter/bchr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1
 /bitstrea/charter/bchri8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/public
 /amsfonts/cm/cmssbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams
-fonts/cm/cmsy10.pfb>
-Output written on report.pdf (9 pages, 82940 bytes).
+fonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/
+cm/cmtt12.pfb>
+Output written on report.pdf (22 pages, 1765419 bytes).
 PDF statistics:
- 118 PDF objects out of 1000 (max. 8388607)
- 99 compressed objects within 1 object stream
- 19 named destinations out of 1000 (max. 500000)
- 62 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 287 PDF objects out of 1000 (max. 8388607)
+ 233 compressed objects within 3 object streams
+ 65 named destinations out of 1000 (max. 500000)
+ 116 words of extra memory for PDF output out of 10000 (max. 10000000)
 
