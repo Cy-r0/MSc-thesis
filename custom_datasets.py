@@ -67,17 +67,10 @@ class VOCClass2Object(VisionDataset):
         Returns:
             - tuple: image (PIL image), target (PIL Image).
         """
-        #combine class mask into alpha channel of rgb image
+        # combine class mask into alpha channel of rgb image
         img = Image.open(self.images[index])
         mask = Image.open(self.class_masks[index])
         img.putalpha(mask)
-
-        #convert to tensor and save
-        totensor = T.ToTensor()
-        resize = T.Resize((1024, 1024))
-        tens = totensor(resize(img))
-        plt.imshow(np.transpose(tens, (1,2,0)))
-        plt.savefig("tensor.png", transparent=True)
 
         target = Image.open(self.obj_masks[index])
 
