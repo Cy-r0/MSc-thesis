@@ -1,6 +1,7 @@
 import os
 
 from PIL import Image
+import torch
 from torchvision.datasets.vision import VisionDataset
 
 
@@ -28,8 +29,10 @@ class VOCClass2Object(VisionDataset):
         self.image_set = image_set
         voc_root = os.path.join(self.root, "VOCdevkit/VOC2012")
         image_dir = os.path.join(voc_root, "JPEGImages")
-        seg_class_dir = os.path.join(voc_root, "SegmentationClass")
-        seg_obj_dir = os.path.join(voc_root, "SegmentationObject")
+        # NB: the path below points to the augmented dataset only because it has better color encoding,
+        # it doesn't actually use the augmented part of the image set
+        class_mask_dir = os.path.join(voc_root, "SegmentationClassAug")
+        obj_mask_dir = os.path.join(voc_root, "SegmentationObject")
 
         if not os.path.isdir(voc_root):
             raise RuntimeError("Dataset not found or corrupted.")
@@ -46,9 +49,11 @@ class VOCClass2Object(VisionDataset):
         with open(os.path.join(imageset_file), "r") as f:
             file_names = [x.strip() for x in f.readlines()]
 
-        self.images = [os.path.join(image_dir, x + ".png") for x in file_names]
-        self.masks = [os.path.join(seg_obj_dir, x + ".png") for x in file_names]
-        assert (len(self.images) == len(self.masks))
+        self.images = [os.path.join(image_dir, x + ".jpg") for x in file_names]
+        self.class_masks = [os.path.join(class_mask_dir, x + ".png") for x in file_names]
+        self.obj_masks = [os.path.join(obj_mask_dir, x + ".png") for x in file_names]
+        assert (len(self.images) == len(self.class_masks)
+            and len(self.images) == len(self.obj_masks))
     
 
     def __getitem__(self, index):
@@ -57,10 +62,14 @@ class VOCClass2Object(VisionDataset):
             - index (int).
 
         Returns:
-            - tuple: (image, target).
+            - tuple: image (PIL image), target (PIL Image).
         """
+        #combine class mask into alpha channel of rgb image
         img = Image.open(self.images[index])
-        target = Image.open(self.masks[index])
+        mask = Image.open(self.class_masks[index])
+        img.putalpha(mask)
+
+        target = Image.open(self.obj_masks[index])
 
         if self.transforms is not None:
             img, target = self.transforms(img, target)
