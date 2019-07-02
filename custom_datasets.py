@@ -1,8 +1,11 @@
 import os
 
+import matplotlib.pyplot as plt
+import numpy as np
 from PIL import Image
 import torch
 from torchvision.datasets.vision import VisionDataset
+import torchvision.transforms as T
 
 
 class VOCClass2Object(VisionDataset):
@@ -68,6 +71,13 @@ class VOCClass2Object(VisionDataset):
         img = Image.open(self.images[index])
         mask = Image.open(self.class_masks[index])
         img.putalpha(mask)
+
+        #convert to tensor and save
+        totensor = T.ToTensor()
+        resize = T.Resize((1024, 1024))
+        tens = totensor(resize(img))
+        plt.imshow(np.transpose(tens, (1,2,0)))
+        plt.savefig("tensor.png", transparent=True)
 
         target = Image.open(self.obj_masks[index])
 
