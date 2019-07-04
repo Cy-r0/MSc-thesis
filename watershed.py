@@ -14,7 +14,8 @@ class Watershed(object):
 	Args:
 		- img_dir (string): path of directory with instance segmentation images.
 		- watershed_dir (string): path of directory with transformed images.
-		- seg_extension (string, optional): default is compatible with PASCAL VOC.
+		- img_extension (string, optional): default is .png,
+		  which is compatible with the PASCAL VOC images.
 
 	"""
 
@@ -44,11 +45,11 @@ class Watershed(object):
 			image = Image.open(join(self.img_dir, image_name + self.img_ext))
 
 			# watershed algorithm here:
-			# use convolutional kernel
+			# use scipy's generic_filter
 
 			# for each pixel in image:
 			# 	pass kernel onto it
-			#	check which pixels of the kernel are on a boundary
+			#	check which pixels of the kernel are on a boundary (white pixels)
 			#	depending on the index of those pixels, set a value to the center pixel
 
 # test code
