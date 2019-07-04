@@ -12,37 +12,25 @@ class Watershed(object):
 	level N corresponds to regions far from boundaries.
 
 	Args:
-		- img_dir (string): path of directory with input images.
-		- seg_dir (string): path of directory with instance segmentations.
+		- img_dir (string): path of directory with instance segmentation images.
 		- watershed_dir (string): path of directory with transformed images.
-		- img_extension (string, optional): default is compatible with PASCAL VOC.
 		- seg_extension (string, optional): default is compatible with PASCAL VOC.
 
 	"""
 
-	def __init__(self,
-				 img_dir,
-				 seg_dir,
-				 watershed_dir,
-				 img_extension = ".jpg",
-				 seg_extension = ".png"):
+	def __init__(self, img_dir, watershed_dir, img_extension = ".png"):
 		self.img_dir = img_dir
-		self.seg_dir = seg_dir
 		self.watershed_dir = watershed_dir
 		self.img_ext = img_extension
-		self.seg_ext = seg_extension
 
 		if not isdir(img_dir):
 			raise RuntimeError("Image directory not found or corrupted.")
 		
-		# get sorted names of all images and segmentations
+		# get name of all images
 		self.images = sorted([splitext(img)[0] for img in listdir(img_dir)
 					  if isfile(join(img_dir, img))])
-		self.segs = sorted([splitext(seg)[0] for seg in listdir(seg_dir)
-					if isfile(join(seg_dir, seg))])
 		
-		assert len(self.images) == len(self.segs), \
-				   "Number of images doesn't match number of segmentation files."
+		assert len(self.images) > 0, "Looks like there's no images in this folder."
 
 	def generate(self, levels=8):
 		"""
@@ -51,17 +39,19 @@ class Watershed(object):
 		Args:
 			- levels (int): number of energy levels to quantise the transform with.
 		"""
-		for image_name, seg_name in zip(self.images, self.segs):
-			assert image_name == seg_name, \
-				   "Image and segmentation file names don't match."
+		for image_name in self.images:
 
 			image = Image.open(join(self.img_dir, image_name + self.img_ext))
-			seg = Image.open(join(self.seg_dir, seg_name + self.seg_ext))
 
-			#watershed algorithm here
+			# watershed algorithm here:
+			# use convolutional kernel
 
+			# for each pixel in image:
+			# 	pass kernel onto it
+			#	check which pixels of the kernel are on a boundary
+			#	depending on the index of those pixels, set a value to the center pixel
 
-#test code
+# test code
 if __name__ == "__main__":
-	w = Watershed("img", "seg", "s")
+	w = Watershed("img", "s")
 	w.generate()
