@@ -2,9 +2,10 @@ from math import sqrt
 from os import listdir
 from os.path import join, isdir, isfile, splitext
 
+import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 from scipy.ndimage.filters import generic_filter
+
 
 class Watershed(object):
 	"""
@@ -44,51 +45,18 @@ class Watershed(object):
 			- level_spans (int, sequence): list of the widths of each
 				energy level in pixels.
 		"""
-		self._init_rdf_kernel(level_spans)
+		filter = _WatershedFilter(level_spans)
 
 		for image_name in self.images:
-			image = Image.open(join(self.img_dir, image_name + self.img_ext))
+			# read image, process it and save output
+			img = plt.imread(join(self.img_dir, image_name + self.img_ext))
+			transformed = filter.process(img)
+			# TODO: save transformed
 
-			self._rounded_distance_filter(level_spans)
 
-			# watershed algorithm here:
-			# use scipy's generic_filter
-
-			# for each pixel in image:
-			# 	pass kernel onto it
-			#	check which pixels of the kernel are on a boundary (white pixels)
-			#	depending on the index of those pixels, set a value to the center pixel
-
-	def _init_rdf_kernel(self, level_spans):
-		"""
-		Initialise the kernel to be used in the rounded distance filter.
-
-		Args:
-			- level_spans (int, sequence): same argument as in self.generate().
-		"""
-		kernel_halfsize = sum(level_spans)
-		kernel_size = 2 * kernel_halfsize + 1
-
-		kernel = np.zeros((kernel_size, kernel_size), dtype="int")
-		# calculate rounded distance of each pixel from the centre
-		for i in range(kernel_size):
-			for j in range(kernel_size):
-				kernel[i,j] = round(sqrt((i - kernel_halfsize)**2 +
-										 (j - kernel_halfsize)**2))
-
-	def _rdf(self, level_spans):
-		"""
-		Rounded distance filter. Calculates distance to the closest
-		mask boundary pixel and maps it to the level_spans.
-
-		Args:
-			- 
-
-		"""
-
-class WatershedFilter(object):
+class _WatershedFilter(object):
 	"""
-	Calculates energy level of pixel depending on its distance to the
+	Calculates energy level of image pixels depending on its distance to the
 	closest mask boundary pixel.
 
 	Args:
@@ -108,7 +76,7 @@ class WatershedFilter(object):
 				self.kernel[i,j] = round(sqrt((i - self.kernel_halfsize)**2 +
 											  (j - self.kernel_halfsize)**2))
 											  
-	def calculate(self, img):
+	def process(self, img):
 		"""
 		Process an image as a 2D numpy array and produce filter output.
 
@@ -123,14 +91,17 @@ class WatershedFilter(object):
 							  size = self.kernel_size,
 							  mode = "constant")
 
-	def _filter(self):
+	def _filter(self, array):
 		"""
 		Helper method that implements the filter's function.
 
-		Returns:
-			- output (int): energy 
-		"""
+		Args:
+			- array (ndarray): input array.
 
+		Returns:
+			- output (int): energy level of pixel.
+		"""
+		# TODO: implement filter function
 
 
 # test code
