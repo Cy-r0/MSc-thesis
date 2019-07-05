@@ -1,7 +1,10 @@
+from math import sqrt
 from os import listdir
 from os.path import join, isdir, isfile, splitext
 
+import numpy as np
 from PIL import Image
+from scipy.ndimage import generic_filter
 
 class Watershed(object):
 	"""
@@ -31,18 +34,21 @@ class Watershed(object):
 		self.images = sorted([splitext(img)[0] for img in listdir(img_dir)
 					  if isfile(join(img_dir, img))])
 		
-		assert len(self.images) > 0, "Looks like there's no images in this folder."
+		assert len(self.images) > 0, "No images were retrieved."
 
-	def generate(self, levels=8):
+	def generate(self, level_spans = [2,3,5,8,13,21,34,55]):
 		"""
 		Generate transformed images.
 
 		Args:
-			- levels (int): number of energy levels to quantise the transform with.
+			- level_spans (int, sequence): list of the thickness of each energy level in pixels.
+				Number of energy levels is autoinferred from this argument.
 		"""
 		for image_name in self.images:
 
 			image = Image.open(join(self.img_dir, image_name + self.img_ext))
+
+			self._rounded_distance_filter(level_spans)
 
 			# watershed algorithm here:
 			# use scipy's generic_filter
@@ -51,8 +57,26 @@ class Watershed(object):
 			# 	pass kernel onto it
 			#	check which pixels of the kernel are on a boundary (white pixels)
 			#	depending on the index of those pixels, set a value to the center pixel
+	
+	def _rounded_distance_filter(self, level_spans):
+		"""
+		Filter kernel for calculating distance to closest boundary pixel.
+
+		Args:
+			- level_spans (int, sequence): same argument as in self.generate().
+		"""
+		kernel_halfsize = sum(level_spans)
+		kernel_size = 2 * kernel_halfsize + 1
+
+		kernel = np.zeros((kernel_size, kernel_size), dtype="int")
+		# calculate rounded distance of each pixel from the centre
+		for i in range(kernel_size):
+			for j in range(kernel_size):
+				kernel[i,j] = round(sqrt((i - kernel_halfsize)**2 +
+										 (j - kernel_halfsize)**2))
+
 
 # test code
 if __name__ == "__main__":
-	w = Watershed("img", "s")
+	w = Watershed("/home/cyrus/Documents/datasets/VOCdevkit/VOC2012/SegmentationClassAug", "s")
 	w.generate()
