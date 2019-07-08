@@ -37,13 +37,20 @@ class Watershed(object):
 		
 		assert len(self.images) > 0, "No images were retrieved."
 
-	def generate(self, level_spans = [2,3,5,8,13,21,34,55]):
+	def generate(self, level_spans = [2,3,4,5,6,8,12]):	#sum of spans is 40
 		"""
 		Generate transformed images.
 
 		Args:
 			- level_spans (int, sequence): list of the widths of each
 				energy level in pixels.
+		
+		WARNING!
+			Maximum sum of level spans is around 120 on my machine (32 GB RAM)
+			before the pc starts filling the swap space.
+			MemoryErrors still don't occur up to around 130 (swap space is 8 GB),
+			however I really don't recommend making the filter leak into
+			swap space because the machine will be really slow.
 		"""
 		filter = _WatershedFilter(level_spans)
 
@@ -52,12 +59,15 @@ class Watershed(object):
 			img = plt.imread(join(self.img_dir, image_name + self.img_ext))
 			transformed = filter.process(img)
 			# TODO: save transformed
+			plt.imshow(transformed)
+			plt.show()
 
 
 class _WatershedFilter(object):
 	"""
 	Calculates energy level of image pixels depending on its distance to the
 	closest mask boundary pixel.
+	NB: energy level is just the index of the elements in level_spans
 
 	Args:
 		- level_spans (int, sequence): list of the widths of each
@@ -66,7 +76,7 @@ class _WatershedFilter(object):
 
 	def __init__(self, level_spans):
 		self.level_spans = level_spans
-		self.kernel_halfsize = sum(level_spans)
+		self.kernel_halfsize = sum(level_spans)	#centre pixel excluded obv
 		self.kernel_size = 2 * self.kernel_halfsize + 1
 
 		self.kernel = np.zeros((self.kernel_size, self.kernel_size), dtype="int")
@@ -89,9 +99,9 @@ class _WatershedFilter(object):
 		return generic_filter(img,
 							  self._filter,
 							  size = self.kernel_size,
-							  mode = "constant")
+							  mode = "nearest")
 
-	def _filter(self, array):
+	def _filter(self, array, boundary_colour = 1.0):
 		"""
 		Helper method that implements the filter's function.
 
@@ -101,10 +111,34 @@ class _WatershedFilter(object):
 		Returns:
 			- output (int): energy level of pixel.
 		"""
-		# TODO: implement filter function
+		array = array.reshape((self.kernel_size, self.kernel_size))
+		boundary_px = np.where(array == boundary_colour)
+		energy_level = 0
+
+		# return highest energy level if no boundary pixels detected
+		if boundary_px[0].size == 0:
+			energy_level = len(self.level_spans) - 1
+
+		# get minimum distance from boundary pixels and convert to energy level
+		else:
+			min_dist = min([self.kernel[i,j] for i,j
+								in zip(boundary_px[0], boundary_px[1])])
+			
+			cumulative_level = 0
+			for i in range(len(self.level_spans)):
+				cumulative_level += self.level_spans[i]
+
+				if cumulative_level < min_dist:
+					continue
+
+				elif (cumulative_level >= min_dist):
+					energy_level = i
+			
+		print(energy_level)
+		return energy_level
 
 
 # test code
 if __name__ == "__main__":
-	w = Watershed("/home/cyrus/Documents/datasets/VOCdevkit/VOC2012/SegmentationClassAug", "s")
+	w = Watershed("/home/cyrus/Datasets/VOCdevkit/VOC2012/SegmentationClassAug", "s")
 	w.generate()
