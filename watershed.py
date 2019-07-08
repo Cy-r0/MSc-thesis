@@ -1,10 +1,10 @@
-from math import sqrt
+import math
+import multiprocessing
 import os.path
 
 from imageio import imread, imwrite
 import numpy as np
 from scipy.ndimage.filters import generic_filter
-from tqdm import tqdm
 
 
 class Watershed(object):
@@ -46,9 +46,10 @@ class Watershed(object):
 		assert len(self.images) > 0, "No images were retrieved."
 
 	def generate(self,
-				 level_spans = [2,2,3,3,4,4,5,6,8,11,15,20,30]):	#sum of spans is 113
+				 level_spans = [1,2,2,3,3,4,4,5,6,8,11,15,20],  # sum of spans is 84
+				 jobs = 4):
 		"""
-		Generate transformed images.
+		Generate transformed images using multiple processes.
 
 		Args:
 			- level_spans (int, sequence): list of the widths of each
@@ -59,20 +60,36 @@ class Watershed(object):
 			before I start getting MemoryErrors.
 		"""
 		filter = _WatershedFilter(level_spans)
+		
+		pool = multiprocessing.Pool(processes = jobs)
+		for image in self.images:
+			pool.apply_async(self._work, args = (filter, image))
+		pool.close()
+		pool.join()
 
-		for image_name in tqdm(self.images):
+		print("DONE!")
 
-			if os.path.exists(os.path.join(self.watershed_dir,
-										   image_name + self.img_ext)):
-				continue
-			
-			# Read image, process it and save output
-			else:
-				img = imread(os.path.join(self.img_dir,
-										  image_name + self.img_ext))
-				transformed = filter.process(img)
-				imwrite(os.path.join(self.watershed_dir, 
-									 image_name + self.img_ext), transformed)
+	def _work(self, filter, image_name):
+		"""
+		Internal function that converts images.
+
+		Args:
+			- filter (class): filter to apply.
+			- image_name (string): name of input image.
+		"""
+		# skip if already exists
+		if os.path.exists(os.path.join(self.watershed_dir,
+										image_name + self.img_ext)):
+			print(image_name + " already exists. Skipped.")
+		
+		# Read image, process it and save output
+		else:
+			img = imread(os.path.join(self.img_dir,
+									  image_name + self.img_ext))
+			transformed = filter.process(img)
+			imwrite(os.path.join(self.watershed_dir,
+								 image_name + self.img_ext), transformed)
+			print(image_name + " transformed.")
 
 
 class _WatershedFilter(object):
@@ -96,8 +113,8 @@ class _WatershedFilter(object):
 		# Compose kernel with rounded distance of each pixel from the centre
 		for i in range(self.kernel_size):
 			for j in range(self.kernel_size):
-				self.kernel[i,j] = sqrt((i - self.kernel_halfsize)**2 +
-											  (j - self.kernel_halfsize)**2)
+				self.kernel[i,j] = math.sqrt((i - self.kernel_halfsize)**2 +
+											 (j - self.kernel_halfsize)**2)
 											  
 	def process(self, img):
 		"""
