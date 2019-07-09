@@ -1,6 +1,6 @@
 import math
 import multiprocessing
-import os.path
+import os
 
 from imageio import imread, imwrite
 import numpy as np
