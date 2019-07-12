@@ -10,9 +10,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import init
 
-from xception import Xception
-from ASPP import ASPP
-from sync_batchnorm import SynchronizedBatchNorm2d
+from models.ASPP import ASPP
+from models.sync_batchnorm import SynchronizedBatchNorm2d
+from models.xception import Xception
 
 ASPP_OUT_DIM = 256
 
@@ -24,14 +24,14 @@ SHORTCUT_KERNEL = 1
 BN_MOMENTUM = 0.0003
 N_CLASSES = 21
 
-class deeplabv3plus_Y(nn.Module):
+class Deeplabv3plus_Y(nn.Module):
     """
     Neural network based on DeepLab v3+ but with two branches, one for semantic
     segmentation and the other for watershed-based instance segmentation.
     """
 
     def __init__(self):
-        super(deeplabv3plus_Y, self).__init__()
+        super(Deeplabv3plus_Y, self).__init__()
 
         input_channel = 2048
 

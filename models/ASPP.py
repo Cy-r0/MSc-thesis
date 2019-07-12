@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from sync_batchnorm import SynchronizedBatchNorm2d
+from models.sync_batchnorm import SynchronizedBatchNorm2d
 
 class ASPP(nn.Module):
 	

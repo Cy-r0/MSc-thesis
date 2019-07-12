@@ -94,7 +94,6 @@ class DistanceTransform(object):
 			  end="\r", flush=True)
 
 
-# Test code
 if __name__ == "__main__":
 
 	root = "/home/cyrus/Datasets/VOCdevkit/VOC2012/"
