@@ -1,5 +1,7 @@
 # Ignore these folders
-__pycache__
+__pycache__/
+
 
 # and these files
 *.pyc
+*.pth
