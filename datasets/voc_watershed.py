@@ -62,10 +62,6 @@ class VOCWatershed(VisionDataset):
         img = Image.open(self.images[index])
         target = Image.open(self.targets[index])
 
-        if self.transform is not None:
-            img = self.transform(img)
-        if self.target_transform is not None:
-            target = self.target_transform(target)
         if self.transforms is not None:
             img, target = self.transforms(img, target)
         
@@ -97,13 +93,14 @@ class Quantise(object):
             self.lookup_table[acc : acc + level_widths[i]] = [i] * level_widths[i]
             acc += level_widths[i]
 
-        print(self.lookup_table)
-
-    def __call__(self, target):
+    def __call__(self, sample):
         """
         Args:
             - target (PIL Image): input image to be quantised.
         """
+        image = sample["image"]
+        target = sample["target"]
+
         target.point(self.lookup_table)
 
-        return target
+        return {"image": image, "target": target}

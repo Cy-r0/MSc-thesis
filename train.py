@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.transforms as T
 
-from datasets.voc_watershed import VOCWatershed
+from datasets.voc_watershed import VOCWatershed, Quantise
 from models.deeplabv3plus_Y import Deeplabv3plus_Y
 from models.sync_batchnorm.replicate import patch_replication_callback
 
@@ -86,13 +86,11 @@ def adjust_lr(optimizer, i, max_i):
 
 
 # Dataset transforms
-
-# TODO: implement quantisatin transform
-
-transform = T.Compose([T.Normalize(0,)
+transform = T.Compose([Quantise(),
                        T.Resize(DATA_RESCALE),
                        T.RandomCrop(DATA_RANDOMCROP),
-                       T.ToTensor()])
+                       T.ToTensor(),
+                       T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
 # Dataset setup
 VOCW_train = VOCWatershed(DSET_ROOT,
@@ -116,6 +114,17 @@ loader_val = DataLoader(VOCW_val,
                         num_workers = DATALOADER_JOBS,
                         pin_memory = True,
                         drop_last=True)
+
+# show images TODO: delete this
+dataiter = iter(loader_train)
+images, labels = dataiter.next()
+
+img = images[0] / 2 + 0.5
+tgt = labels[0] / 2 + 0.5
+plt.imshow(img.numpy())
+plt.show()
+plt.imshow(tgt.numpy())
+plt.show()
 
 # Initialise tensorboardX logger
 if LOG:
@@ -180,8 +189,8 @@ for epoch in range(TRAIN_EPOCHS):
             input_tb = inputs.numpy()[0]
             label_tb = labels[0].cpu().numpy()
             prediction_tb = torch.argmax(predictions[0], dim=0).cpu().numpy()
-            pix_accuracy = np.sum(label_tb == prediction_tb)
-                           // (DATA_RESCALE ** 2)
+            pix_accuracy = (np.sum(label_tb == prediction_tb)
+                            // (DATA_RESCALE ** 2))
             
             tbX_logger.add_scalar("loss", running_loss, i)
             tbX_logger.add_scalar("lr", lr, i)
@@ -196,13 +205,13 @@ for epoch in range(TRAIN_EPOCHS):
         if i % 5000 == 0:
             save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_itr%d.pth"
                         %(MODEL_NAME, MODEL_BACKBONE, DATA_NAME, i))
-			torch.save(model.state_dict(), save_path)
-			print("%s has been saved" %save_path)
+            torch.save(model.state_dict(), save_path)
+            print("%s has been saved" %save_path)
 
         i += 1
 
 # Save final trained model
-save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_epoch%d_all.pth"
+save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_epoch%d_final.pth"
             %(MODEL_NAME, MODEL_BACKBONE, DATA_NAME, TRAIN_EPOCHS))
 torch.save(model.state_dict(), save_path)
 print("Final: %s has been saved" %save_path)
