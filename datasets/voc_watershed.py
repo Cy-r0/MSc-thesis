@@ -20,7 +20,6 @@ class VOCWatershed(VisionDataset):
         - transforms (callable): transform to apply to both samples and labels.
     """
 
-
     def __init__(self,
                  root,
                  image_set = "train",
@@ -52,7 +51,6 @@ class VOCWatershed(VisionDataset):
         
         assert len(self.images) == len(self.targets)
     
-
     def __getitem__(self, index):
         """
         Arguments:
@@ -64,11 +62,48 @@ class VOCWatershed(VisionDataset):
         img = Image.open(self.images[index])
         target = Image.open(self.targets[index])
 
+        if self.transform is not None:
+            img = self.transform(img)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
         if self.transforms is not None:
             img, target = self.transforms(img, target)
         
         return {"image": img, "target": target}
 
-
     def __len__(self):
         return len(self.images)
+
+
+class Quantise(object):
+    """
+    Custom transformation that quantizes pixel values.
+    Should only be applied to targets (i.e. distance transformed images).
+
+    Args:
+        - level_widths (sequence): width of each quantisation level, starting
+            from level 0 onwards. One more level will be automatically added
+            at the end, so the number of levels will be len(level_widths) + 1.
+    """
+
+    def __init__(self, level_widths=[1,2,2,3,3,4,5,6,7,8,9,10]):
+
+        assert sum(level_widths) < 256, "Sum of level widths is more than 256"
+
+        self.lookup_table = [len(level_widths)] * 256
+        acc = 0
+        for i in range(len(level_widths)):
+
+            self.lookup_table[acc : acc + level_widths[i]] = [i] * level_widths[i]
+            acc += level_widths[i]
+
+        print(self.lookup_table)
+
+    def __call__(self, target):
+        """
+        Args:
+            - target (PIL Image): input image to be quantised.
+        """
+        target.point(self.lookup_table)
+
+        return target
