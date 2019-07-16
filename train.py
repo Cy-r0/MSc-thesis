@@ -1,12 +1,18 @@
+import os
+
+import matplotlib.pyplot as plt
+import numpy as np
 from tensorboardX import SummaryWriter
 import torch
 import torch.nn as nn
+from torch.nn.parallel import DistributedDataParallel
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.transforms as T
 
 from datasets.voc_watershed import VOCWatershed, Quantise
 from models.deeplabv3plus_Y import Deeplabv3plus_Y
+from models.sync_batchnorm import DataParallelWithCallback
 from models.sync_batchnorm.replicate import patch_replication_callback
 
 # Constants here
@@ -33,7 +39,7 @@ CLASSES = ["aeroplane",
            "sofa",
            "train",
            "tvmonitor"]
-DATALOADER_JOBS = 4
+DATALOADER_JOBS = 0
 DSET_ROOT = "/home/cyrus/Datasets"
 
 DATA_RESCALE = 512
@@ -43,17 +49,16 @@ TRAIN_GPUS = 2
 TEST_GPUS = 1
 
 RESUME = False
-PRETRAINED_PATH = """models/pretrained/
-                    deeplabv3plus_xception_VOC2012_itr46_all.pth"""
+PRETRAINED_PATH = "models/pretrained"
 
-BATCH_SIZE = 16
+BATCH_SIZE = 9
 TRAIN_LR = 0.007
 TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
 TRAIN_EPOCHS = 46
 
 
-MODEL_NAME = 'deeplabv3plus'
+MODEL_NAME = 'deeplabv3plus_Y'
 MODEL_BACKBONE = 'xception'
 DATA_NAME = 'VOC2012'
 
@@ -86,21 +91,24 @@ def adjust_lr(optimizer, i, max_i):
 
 
 # Dataset transforms
-transform = T.Compose([Quantise(),
-                       T.Resize(DATA_RESCALE),
+transform = T.Compose([T.Resize(DATA_RESCALE),
                        T.RandomCrop(DATA_RANDOMCROP),
                        T.ToTensor(),
                        T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+t_transform = T.Compose([Quantise(),
+                         T.Resize(DATA_RESCALE),
+                         T.RandomCrop(DATA_RANDOMCROP),
+                         T.ToTensor()])
 
 # Dataset setup
 VOCW_train = VOCWatershed(DSET_ROOT,
-                          image_set = "train",
+                          image_set = "train_reduced",
                           transform = transform,
-                          target_transform = transform)
+                          target_transform = t_transform)
 VOCW_val = VOCWatershed(DSET_ROOT,
-                        image_set = "val",
+                        image_set = "val_reduced",
                         transform = transform,
-                        target_transform = transform)
+                        target_transform = t_transform)
 
 loader_train = DataLoader(VOCW_train,
                           batch_size = BATCH_SIZE,
@@ -116,15 +124,23 @@ loader_val = DataLoader(VOCW_val,
                         drop_last=True)
 
 # show images TODO: delete this
+"""
 dataiter = iter(loader_train)
-images, labels = dataiter.next()
+batch = dataiter.next()
 
-img = images[0] / 2 + 0.5
-tgt = labels[0] / 2 + 0.5
-plt.imshow(img.numpy())
+img = batch["image"][0] / 2 + 0.5
+tgt = batch["target"][0]
+
+tensor2img = T.ToPILImage()
+
+img = tensor2img(img)
+tgt = tensor2img(tgt)
+
+plt.imshow(img)
 plt.show()
-plt.imshow(tgt.numpy())
+plt.imshow(tgt)
 plt.show()
+"""
 
 # Initialise tensorboardX logger
 if LOG:
@@ -135,11 +151,11 @@ model = Deeplabv3plus_Y()
 
 # Move model to GPU devices
 device = torch.device(0)
-print("Number of GPUs:", torch.cuda.device_count())
+print("GPUs found:", torch.cuda.device_count())
+print("GPUs used:", TRAIN_GPUS)
+
 if TRAIN_GPUS > 1:
     model = nn.DataParallel(model)
-    patch_replication_callback(model)
-model.to(device)
 
 # Load pretrained model weights and start training from that point
 if RESUME:
@@ -149,12 +165,14 @@ if RESUME:
     current_dict.update(pretrained_dict)
     model.load_state_dict(current_dict)
 
+model.to(device)
+
 # Set training parameters
-criterion = nn.CrossEntropyLoss(ignore_index=0)
+criterion = nn.CrossEntropyLoss()#ignore_index=0)
 optimiser = optim.SGD(
         params = [
-            {'params': get_params(model.module, key='1x'), 'lr': TRAIN_LR},
-            {'params': get_params(model.module, key='10x'), 'lr': 10*TRAIN_LR}
+            {'params': get_params(model, key='1x'), 'lr': TRAIN_LR},
+            {'params': get_params(model, key='10x'), 'lr': 10*TRAIN_LR}
         ],
         momentum=TRAIN_MOMENTUM)
 
@@ -166,12 +184,15 @@ for epoch in range(TRAIN_EPOCHS):
     running_loss = 0.0
     for batch_i, batch in enumerate(loader_train):
 
-        inputs, labels = batch["image"], batch["target"].to(device[0])
+        inputs, labels = batch["image"].to(device), batch["target"].to(device)
+        # Convert labels to integers
+        labels = labels.mul(255).round().long().squeeze()
 
         lr = adjust_lr(optimiser, i, max_i)
         optimiser.zero_grad()
+
         # Calculate loss
-        predictions = model(inputs).to(device[0])
+        predictions = model(inputs)
         loss = criterion(predictions, labels)
 
         # Backprop and gradient descent
@@ -186,9 +207,11 @@ for epoch in range(TRAIN_EPOCHS):
 
         # Log stats on tensorboard
         if i % 100 == 0:
-            input_tb = inputs.numpy()[0]
-            label_tb = labels[0].cpu().numpy()
-            prediction_tb = torch.argmax(predictions[0], dim=0).cpu().numpy()
+            # Only get first image of batch (TODO: change to whole batch)
+            input_tb = inputs.cpu().numpy()[0]
+            label_tb = labels.cpu()[0].unsqueeze(0).numpy()
+
+            prediction_tb = torch.argmax(predictions[0], dim=0).cpu().unsqueeze(0).numpy()
             pix_accuracy = (np.sum(label_tb == prediction_tb)
                             // (DATA_RESCALE ** 2))
             

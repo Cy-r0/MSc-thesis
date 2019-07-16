@@ -40,8 +40,8 @@ class VOCWatershed(VisionDataset):
 
         if not os.path.exists(imageset_file):
             raise ValueError(
-                'Wrong image_set entered! Please use image_set="train" '
-                'or image_set="trainval" or image_set="val"')
+                'Wrong image_set entered! Please use image_set="train", '
+                'image_set="trainval", image_set="val"')
 
         with open(os.path.join(imageset_file), "r") as f:
             file_names = [x.strip() for x in f.readlines()]
@@ -93,14 +93,11 @@ class Quantise(object):
             self.lookup_table[acc : acc + level_widths[i]] = [i] * level_widths[i]
             acc += level_widths[i]
 
-    def __call__(self, sample):
+    def __call__(self, img):
         """
         Args:
-            - target (PIL Image): input image to be quantised.
+            - img (PIL Image): input image to be quantised.
         """
-        image = sample["image"]
-        target = sample["target"]
+        img.point(self.lookup_table)
 
-        target.point(self.lookup_table)
-
-        return {"image": image, "target": target}
+        return img

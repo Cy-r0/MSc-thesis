@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from models.sync_batchnorm import SynchronizedBatchNorm2d
+# from models.sync_batchnorm import nn.SynchronizedBatchNorm2d
 
 class ASPP(nn.Module):
 	
@@ -14,35 +14,35 @@ class ASPP(nn.Module):
 		super(ASPP, self).__init__()
 		self.branch1 = nn.Sequential(
 				nn.Conv2d(dim_in, dim_out, 1, 1, padding=0, dilation=rate,bias=True),
-				SynchronizedBatchNorm2d(dim_out, momentum=bn_mom),
+				nn.BatchNorm2d(dim_out, momentum=bn_mom),
 				nn.ReLU(inplace=True),
 		)
 		self.branch2 = nn.Sequential(
 				nn.Conv2d(dim_in, dim_out, 3, 1, padding=6*rate, dilation=6*rate,bias=True),
-				SynchronizedBatchNorm2d(dim_out, momentum=bn_mom),
+				nn.BatchNorm2d(dim_out, momentum=bn_mom),
 				nn.ReLU(inplace=True),	
 		)
 		self.branch3 = nn.Sequential(
 				nn.Conv2d(dim_in, dim_out, 3, 1, padding=12*rate, dilation=12*rate,bias=True),
-				SynchronizedBatchNorm2d(dim_out, momentum=bn_mom),
+				nn.BatchNorm2d(dim_out, momentum=bn_mom),
 				nn.ReLU(inplace=True),	
 		)
 		self.branch4 = nn.Sequential(
 				nn.Conv2d(dim_in, dim_out, 3, 1, padding=18*rate, dilation=18*rate,bias=True),
-				SynchronizedBatchNorm2d(dim_out, momentum=bn_mom),
+				nn.BatchNorm2d(dim_out, momentum=bn_mom),
 				nn.ReLU(inplace=True),	
 		)
 		self.branch5_conv = nn.Conv2d(dim_in, dim_out, 1, 1, 0,bias=True)
-		self.branch5_bn = SynchronizedBatchNorm2d(dim_out, momentum=bn_mom)
+		self.branch5_bn = nn.BatchNorm2d(dim_out, momentum=bn_mom)
 		self.branch5_relu = nn.ReLU(inplace=True)
 		self.conv_cat = nn.Sequential(
 				nn.Conv2d(dim_out*5, dim_out, 1, 1, padding=0,bias=True),
-				SynchronizedBatchNorm2d(dim_out, momentum=bn_mom),
+				nn.BatchNorm2d(dim_out, momentum=bn_mom),
 				nn.ReLU(inplace=True),		
 		)
 #		self.conv_cat = nn.Sequential(
 #				nn.Conv2d(dim_out*4, dim_out, 1, 1, padding=0),
-#				SynchronizedBatchNorm2d(dim_out),
+#				nn.BatchNorm2d(dim_out),
 #				nn.ReLU(inplace=True),		
 #		)
 	def forward(self, x):

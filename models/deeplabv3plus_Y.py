@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch.nn import init
 
 from models.ASPP import ASPP
-from models.sync_batchnorm import SynchronizedBatchNorm2d
+# from models.sync_batchnorm import nn.SyncronizedBatchNorm2d
 from models.xception import Xception
 
 ASPP_OUT_DIM = 256
@@ -51,17 +51,17 @@ class Deeplabv3plus_Y(nn.Module):
                           1,
                           padding=SHORTCUT_KERNEL//2,
                           bias=True),
-                SynchronizedBatchNorm2d(SHORTCUT_DIM, momentum=BN_MOMENTUM),
+                nn.BatchNorm2d(SHORTCUT_DIM, momentum=BN_MOMENTUM),
                 nn.ReLU(inplace=True),        
         )        
         self.cat_conv = nn.Sequential(
                 nn.Conv2d(ASPP_OUT_DIM + SHORTCUT_DIM,
                 ASPP_OUT_DIM, 3, 1, padding=1, bias=True),
-                SynchronizedBatchNorm2d(ASPP_OUT_DIM, momentum=BN_MOMENTUM),
+                nn.BatchNorm2d(ASPP_OUT_DIM, momentum=BN_MOMENTUM),
                 nn.ReLU(inplace=True),
                 nn.Dropout(0.5),
                 nn.Conv2d(ASPP_OUT_DIM, ASPP_OUT_DIM, 3, 1, padding=1, bias=True),
-                SynchronizedBatchNorm2d(ASPP_OUT_DIM, momentum=BN_MOMENTUM),
+                nn.BatchNorm2d(ASPP_OUT_DIM, momentum=BN_MOMENTUM),
                 nn.ReLU(inplace=True),
                 nn.Dropout(0.1),
         )
@@ -69,7 +69,7 @@ class Deeplabv3plus_Y(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, SynchronizedBatchNorm2d):
+            elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
