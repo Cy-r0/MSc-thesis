@@ -22,7 +22,6 @@ SHORTCUT_DIM = 48
 SHORTCUT_KERNEL = 1
 
 BN_MOMENTUM = 0.0003
-N_CLASSES = 21
 
 class Deeplabv3plus_Y(nn.Module):
     """
@@ -30,7 +29,7 @@ class Deeplabv3plus_Y(nn.Module):
     segmentation and the other for watershed-based instance segmentation.
     """
 
-    def __init__(self):
+    def __init__(self, n_classes):
         super(Deeplabv3plus_Y, self).__init__()
 
         input_channel = 2048
@@ -65,7 +64,7 @@ class Deeplabv3plus_Y(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.Dropout(0.1),
         )
-        self.cls_conv = nn.Conv2d(ASPP_OUT_DIM, N_CLASSES, 1, 1, padding=0)
+        self.cls_conv = nn.Conv2d(ASPP_OUT_DIM, n_classes, 1, 1, padding=0)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')

@@ -7,7 +7,7 @@ from torchvision.datasets.vision import VisionDataset
 import torchvision.transforms as T
 
 
-class VOCWatershed(VisionDataset):
+class VOCDistance(VisionDataset):
     """
     Dataset based on PASCAL VOC 2012 (assumes it has already been downloaded).
     It uses rgb as samples and instance watershed transform as labels.
@@ -26,11 +26,11 @@ class VOCWatershed(VisionDataset):
                  transform = None,
                  target_transform = None,
                  transforms = None):
-        super(VOCWatershed, self).__init__(root, transforms, transform, target_transform)
+        super(VOCDistance, self).__init__(root, transforms, transform, target_transform)
         self.image_set = image_set
         voc_root = os.path.join(self.root, "VOCdevkit/VOC2012")
         image_dir = os.path.join(voc_root, "JPEGImages")
-        target_dir = os.path.join(voc_root, "WatershedTransform")
+        target_dir = os.path.join(voc_root, "DistanceTransform")
 
         if not os.path.isdir(voc_root):
             raise RuntimeError("Dataset not found or corrupted.")
@@ -82,12 +82,13 @@ class Quantise(object):
             at the end, so the number of levels will be len(level_widths) + 1.
     """
 
-    def __init__(self, level_widths=[1,2,2,3,3,4,5,6,7,8,9,10]):
+    def __init__(self, level_widths):
 
-        assert sum(level_widths) < 256, "Sum of level widths is more than 256"
+        assert sum(level_widths) < 256
 
         self.lookup_table = [len(level_widths)] * 256
         acc = 0
+
         for i in range(len(level_widths)):
 
             self.lookup_table[acc : acc + level_widths[i]] = [i] * level_widths[i]
@@ -98,6 +99,21 @@ class Quantise(object):
         Args:
             - img (PIL Image): input image to be quantised.
         """
-        img.point(self.lookup_table)
+        img = img.point(self.lookup_table)
 
         return img
+
+
+if __name__ == "__main__":
+
+    img_path = "/home/cyrus/Datasets/VOCdevkit/VOC2012/DistanceTransform/2007_000032.png"
+    img = Image.open(img_path)
+
+    Q = Quantise(level_widths=[1,2,2,3,3,4,5,6,7,8,9,10])
+    T = T.ToTensor()
+
+    out = Q(img)
+    out.show()
+
+    tensor = T(out)
+    print(tensor)
