@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, sampler
 import torchvision.transforms as T
 from torchvision.utils import make_grid
 
@@ -59,6 +59,7 @@ TRAIN_LR = 0.007
 TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
 TRAIN_EPOCHS = 46
+VAL_FRACTION = 0.2
 
 MODEL_NAME = 'deeplabv3plus_Y'
 MODEL_BACKBONE = 'xception'
@@ -114,19 +115,25 @@ VOCW_val = VOCDistance(DSET_ROOT,
 
 loader_train = DataLoader(VOCW_train,
                           batch_size = BATCH_SIZE,
-                          shuffle = True,
+                          sampler=sampler.SubsetRandomSampler(
+                              range(int(len(VOCW_train) * (1 - VAL_FRACTION)))),
                           num_workers = DATALOADER_JOBS,
                           pin_memory = True,
                           drop_last=True)
-loader_val = DataLoader(VOCW_val,
+loader_val = DataLoader(VOCW_train,
                         batch_size = BATCH_SIZE,
-                        shuffle = True,
+                        sampler=sampler.SubsetRandomSampler(
+                            range(int(len(VOCW_train) * (1 - VAL_FRACTION)),
+                                  len(VOCW_train))),
                         num_workers = DATALOADER_JOBS,
                         pin_memory = True,
                         drop_last=True)
+loader_test = DataLoader(VOCW_val,
+)
+
 
 # show images TODO: delete this
-
+"""
 dataiter = iter(loader_train)
 batch = dataiter.next()
 
@@ -137,7 +144,7 @@ show(make_grid(img))
 plt.show()
 show(make_grid(tgt))
 plt.show()
-
+"""
 
 now = datetime.now()
 
@@ -185,78 +192,104 @@ i = 0
 max_i = TRAIN_EPOCHS * len(loader_train)
 for epoch in range(TRAIN_EPOCHS):
 
-    running_loss = 0.0
-    for batch_i, batch in enumerate(loader_train):
+    train_loss = 0.0
+    
+    model.train()
+    for train_batch_i, train_batch in enumerate(loader_train):
 
-        # Training mode
-        model.train()
-
-        inputs, labels = batch["image"].to(device), batch["target"].to(device)
+        train_inputs = train_batch["image"].to(device)
+        train_labels = train_batch["target"].to(device)
         # Convert labels to integers
-        labels = labels.mul(255).round().long().squeeze()
+        train_labels = train_labels.mul(255).round().long().squeeze()
 
         lr = adjust_lr(optimiser, i, max_i)
         optimiser.zero_grad()
 
         # Calculate loss
-        predictions = model(inputs)
-        loss = criterion(predictions, labels)
+        train_predictions = model(train_inputs)
+        loss = criterion(train_predictions, train_labels)
 
         # Backprop and gradient descent
         loss.backward()
         optimiser.step()
 
-        running_loss += loss.item()
-
-        # Evaluation mode
-        #model.eval()
-
-        # Predict on validation data
-        #val_predictions = 
-
-        print("epoch: %d/%d\tbatch: %d/%d\titr: %d\tlr: %g\tloss: %g"
-              % (epoch+1, TRAIN_EPOCHS, batch_i+1,
-                 VOCW_train.__len__() // BATCH_SIZE, i+1, lr, running_loss))
-
-        # Log stats on tensorboard
-        if i % 100 == 0:
-            # Only get first image of batch (TODO: change to whole batch)
-            input_tb = inputs.cpu().numpy()[0]
-            label_tb = labels.cpu()[0].unsqueeze(0).numpy()
-
-            prediction_tb = torch.argmax(predictions[0], dim=0).cpu().unsqueeze(0).numpy()
-            pix_accuracy = (np.sum(label_tb == prediction_tb)
-                            // (DATA_RESCALE ** 2))
-            
-            tbX_logger.add_scalar("train_loss", running_loss, i)
-            #tbX_logger.add_scalar("val_loss", val_loss, i)
-
-            tbX_logger.add_scalar("lr", lr, i)
-
-            tbX_logger.add_scalar("pixel_accuracy", pix_accuracy, i)
-
-            tbX_logger.add_image("input", input_tb, i)
-            tbX_logger.add_image("label", label_tb, i)
-            tbX_logger.add_image("prediction", prediction_tb, i)
-        
-        running_loss = 0.0
-
-        # Save checkpoint
-        if i % 5000 == 0 and i != 0:
-            save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_itr%d.pth"
-                        %(MODEL_NAME, MODEL_BACKBONE, DATA_NAME, i))
-            torch.save(model.state_dict(), save_path)
-            print("%s has been saved" %save_path)
-
+        train_loss += loss.item()
         i += 1
+
+
+    val_loss = 0.0
+
+    model.train()
+    with torch.no_grad():
+        for val_batch_i, val_batch in enumerate(loader_val):
+
+            val_inputs = val_batch["image"].to(device)
+            val_labels = val_batch["target"].to(device)
+            val_labels = val_labels.mul(255).round().long().squeeze()
+
+            val_predictions = model(val_inputs)
+            loss = criterion(val_predictions, val_labels)
+
+            val_loss += loss.item()
+
+
+    # average losses on all batches
+    train_loss /= len(loader_train)
+    val_loss /= len(loader_val)
+
+    print("epoch: %d/%d\ti: %d\tlr: %g\ttrain_loss: %g\tval_loss: %g"
+          % (epoch+1, TRAIN_EPOCHS, i+1, lr, train_loss, val_loss))
+
+    # Log stats on tensorboard
+    # Only get first image of batch (TODO: change to whole batch)
+    train_input_tb = make_grid(train_inputs).cpu().numpy()
+    train_label_tb = make_grid(train_labels.unsqueeze(1)).cpu().numpy()
+
+    val_input_tb = make_grid(val_inputs).cpu().numpy()
+    val_label_tb = make_grid(val_labels.unsqueeze(1)).cpu().numpy()
+
+    train_prediction_tb = torch.argmax(train_predictions[0],
+                                       dim=0).cpu().unsqueeze(0).numpy()
+    val_prediction_tb = torch.argmax(val_predictions[0],
+                                     dim=0).cpu().unsqueeze(0).numpy()
+
+    train_pix_accuracy = (np.sum(train_label_tb == train_prediction_tb)
+                         / (DATA_RESCALE ** 2))
+    val_pix_accuracy = (np.sum(val_label_tb == val_prediction_tb)
+                         / (DATA_RESCALE ** 2))
+    
+    tbX_logger.add_scalars("losses", {"train": train_loss,
+                                      "val": val_loss}, epoch)
+    tbX_logger.add_scalars("pixel accuracies", {"train": train_pix_accuracy,
+                                                "val": val_pix_accuracy}, epoch)
+    tbX_logger.add_scalar("lr", lr, epoch)
+
+    # it seems like tensorboard doesn't like saving a lot of images,
+    # so save only every 10 epochs
+    if epoch % 10 == 0:
+        tbX_logger.add_image("train_input", train_input_tb, epoch)
+        tbX_logger.add_image("train_label", train_label_tb, epoch)
+        tbX_logger.add_image("train_prediction", train_prediction_tb, epoch)
+
+    # Save checkpoint
+    if epoch % 100 == 0 and epoch != 0:
+        save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_epoch%d.pth"
+                    %(MODEL_NAME, MODEL_BACKBONE, DATA_NAME, epoch))
+        torch.save(model.state_dict(), save_path)
+        print("%s has been saved." %save_path)
+
 
 # Save final trained model
 save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_epoch%d_final.pth"
             %(MODEL_NAME, MODEL_BACKBONE, DATA_NAME, TRAIN_EPOCHS))
 torch.save(model.state_dict(), save_path)
-print("Final: %s has been saved" %save_path)
+print("FINISHED: %s has been saved." %save_path)
 
 # list of TODO's:
-# split training dataset to get a validation set
-# implement validation loss
 # save targets and predictions as colours instead of class number
+# make same images appear at multiple timesteps on tensorboardX
+# fix eval() loss which is currently way higher than train() loss
+#   leads: set track_runnin_stats to false; dont reuse same bn layer in multiple places
+
+# implement two-head model
+# add intermediate vector stage (maybe not needed)
