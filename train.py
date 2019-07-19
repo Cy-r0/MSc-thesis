@@ -10,11 +10,13 @@ from torch.nn.parallel import DistributedDataParallel
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.transforms as T
+from torchvision.utils import make_grid
 
-from datasets.voc_distance import VOCDistance, Quantise
+from datasets.voc_distance import VOCDistance
 from models.deeplabv3plus_Y import Deeplabv3plus_Y
 from models.sync_batchnorm import DataParallelWithCallback
 from models.sync_batchnorm.replicate import patch_replication_callback
+import transforms.transforms as myT
 
 # Constants here
 LOG = True
@@ -50,7 +52,7 @@ TRAIN_GPUS = 2
 TEST_GPUS = 1
 
 RESUME = True
-PRETRAINED_PATH = "models/pretrained/deeplabv3plus_xception_VOC2012_epoch46_all.pth"
+PRETRAINED_PATH = "models/pretrained"
 
 BATCH_SIZE = 9
 TRAIN_LR = 0.007
@@ -58,10 +60,10 @@ TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
 TRAIN_EPOCHS = 46
 
-
 MODEL_NAME = 'deeplabv3plus_Y'
 MODEL_BACKBONE = 'xception'
 DATA_NAME = 'VOC2012'
+
 
 # Helper methods
 def get_params(model, key):
@@ -90,26 +92,25 @@ def adjust_lr(optimizer, i, max_i):
     optimizer.param_groups[1]['lr'] = 10 * lr
     return lr
 
+def show(img):
+    npimg = img.numpy()
+    plt.imshow(np.transpose(npimg, (1,2,0)), interpolation="nearest")
+
 
 # Dataset transforms
-transform = T.Compose([T.Resize(DATA_RESCALE),
-                       T.RandomCrop(DATA_RANDOMCROP),
-                       T.ToTensor(),
-                       T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-t_transform = T.Compose([Quantise(level_widths=[1,2,2,3,3,4,5,6,8,10,14,20]),
-                         T.Resize(DATA_RESCALE),
-                         T.RandomCrop(DATA_RANDOMCROP),
-                         T.ToTensor()])
+transform = T.Compose([myT.Quantise(level_widths=[1,2,2,3,3,4,5,6,8,10,14,20]),
+                       myT.Resize(DATA_RESCALE),
+                       myT.RandomCrop(DATA_RANDOMCROP),
+                       myT.ToTensor(),
+                       myT.Normalise((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
 # Dataset setup
 VOCW_train = VOCDistance(DSET_ROOT,
-                         image_set = "train_reduced",
-                         transform = transform,
-                         target_transform = t_transform)
+                         image_set="train_reduced",
+                         transform=transform)
 VOCW_val = VOCDistance(DSET_ROOT,
-                       image_set = "val_reduced",
-                       transform = transform,
-                       target_transform = t_transform)
+                       image_set="val_reduced",
+                       transform=transform)
 
 loader_train = DataLoader(VOCW_train,
                           batch_size = BATCH_SIZE,
@@ -125,25 +126,18 @@ loader_val = DataLoader(VOCW_val,
                         drop_last=True)
 
 # show images TODO: delete this
-"""
+
 dataiter = iter(loader_train)
 batch = dataiter.next()
 
-img = batch["image"][0]
-tgt = batch["target"][0]
+img = batch["image"]
+tgt = batch["target"]
 
-print(tgt.shape)
-
-tensor2img = T.ToPILImage()
-
-img = tensor2img(img)
-tgt = tensor2img(tgt)
-
-plt.imshow(img)
+show(make_grid(img))
 plt.show()
-plt.imshow(tgt)
+show(make_grid(tgt))
 plt.show()
-"""
+
 
 now = datetime.now()
 
@@ -163,10 +157,14 @@ print("GPUs used:", TRAIN_GPUS)
 if TRAIN_GPUS > 1:
     model = nn.DataParallel(model)
 
-# Load pretrained model weights and start training from that point
+# Load pretrained model weights only for backbone network and aspp
 if RESUME:
     current_dict = model.state_dict()
-    pretrained_dict = torch.load(PRETRAINED_PATH)
+    pretrained_dict = torch.load(os.path.join(PRETRAINED_PATH,
+                        "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
+    pretrained_dict = {k: v for k, v in pretrained_dict.items()
+                       if "backbone" in k
+                       or "aspp" in k}
 
     current_dict.update(pretrained_dict)
     model.load_state_dict(current_dict)
@@ -196,7 +194,6 @@ for epoch in range(TRAIN_EPOCHS):
         inputs, labels = batch["image"].to(device), batch["target"].to(device)
         # Convert labels to integers
         labels = labels.mul(255).round().long().squeeze()
-        print(labels)
 
         lr = adjust_lr(optimiser, i, max_i)
         optimiser.zero_grad()
@@ -218,15 +215,14 @@ for epoch in range(TRAIN_EPOCHS):
         #val_predictions = 
 
         print("epoch: %d/%d\tbatch: %d/%d\titr: %d\tlr: %g\tloss: %g"
-              % (epoch, TRAIN_EPOCHS, batch_i,
-                 VOCW_train.__len__() // BATCH_SIZE, i, lr, running_loss))
+              % (epoch+1, TRAIN_EPOCHS, batch_i+1,
+                 VOCW_train.__len__() // BATCH_SIZE, i+1, lr, running_loss))
 
         # Log stats on tensorboard
         if i % 100 == 0:
             # Only get first image of batch (TODO: change to whole batch)
             input_tb = inputs.cpu().numpy()[0]
             label_tb = labels.cpu()[0].unsqueeze(0).numpy()
-            print(ue)
 
             prediction_tb = torch.argmax(predictions[0], dim=0).cpu().unsqueeze(0).numpy()
             pix_accuracy = (np.sum(label_tb == prediction_tb)
@@ -259,3 +255,8 @@ save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_epoch%d_final.pth"
             %(MODEL_NAME, MODEL_BACKBONE, DATA_NAME, TRAIN_EPOCHS))
 torch.save(model.state_dict(), save_path)
 print("Final: %s has been saved" %save_path)
+
+# list of TODO's:
+# split training dataset to get a validation set
+# implement validation loss
+# save targets and predictions as colours instead of class number

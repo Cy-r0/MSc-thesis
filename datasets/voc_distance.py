@@ -3,11 +3,11 @@ import os
 import numpy as np
 from PIL import Image
 import torch
-from torchvision.datasets.vision import VisionDataset
+from torch.utils.data import Dataset
 import torchvision.transforms as T
 
 
-class VOCDistance(VisionDataset):
+class VOCDistance(Dataset):
     """
     Dataset based on PASCAL VOC 2012 (assumes it has already been downloaded).
     It uses rgb as samples and instance watershed transform as labels.
@@ -15,20 +15,17 @@ class VOCDistance(VisionDataset):
     Arguments:
         - root (string): root directory of dataset (devkit).
         - image_set (string): choose from "train", "val" and "trainval".
-        - transform (callable): transform to apply to samples.
-        - target_transform (callable): transform to apply to labels.
-        - transforms (callable): transform to apply to both samples and labels.
+        - transforms (callable): transforms that take both sample and target
+            as input.
     """
 
     def __init__(self,
                  root,
-                 image_set = "train",
-                 transform = None,
-                 target_transform = None,
-                 transforms = None):
-        super(VOCDistance, self).__init__(root, transforms, transform, target_transform)
+                 image_set="train",
+                 transform=None):
         self.image_set = image_set
-        voc_root = os.path.join(self.root, "VOCdevkit/VOC2012")
+        self.transform = transform
+        voc_root = os.path.join(root, "VOCdevkit/VOC2012")
         image_dir = os.path.join(voc_root, "JPEGImages")
         target_dir = os.path.join(voc_root, "DistanceTransform")
 
@@ -40,8 +37,7 @@ class VOCDistance(VisionDataset):
 
         if not os.path.exists(imageset_file):
             raise ValueError(
-                'Wrong image_set entered! Please use image_set="train", '
-                'image_set="trainval", image_set="val"')
+                "Wrong image_set entered!")
 
         with open(os.path.join(imageset_file), "r") as f:
             file_names = [x.strip() for x in f.readlines()]
@@ -61,59 +57,12 @@ class VOCDistance(VisionDataset):
         """
         img = Image.open(self.images[index])
         target = Image.open(self.targets[index])
+        sample = {'image': img, 'target': target}
 
-        if self.transforms is not None:
-            img, target = self.transforms(img, target)
+        if self.transform is not None:
+            sample = self.transform(sample)
         
-        return {"image": img, "target": target}
+        return sample
 
     def __len__(self):
         return len(self.images)
-
-
-class Quantise(object):
-    """
-    Custom transformation that quantizes pixel values.
-    Should only be applied to targets (i.e. distance transformed images).
-
-    Args:
-        - level_widths (sequence): width of each quantisation level, starting
-            from level 0 onwards. One more level will be automatically added
-            at the end, so the number of levels will be len(level_widths) + 1.
-    """
-
-    def __init__(self, level_widths):
-
-        assert sum(level_widths) < 256
-
-        self.lookup_table = [len(level_widths)] * 256
-        acc = 0
-
-        for i in range(len(level_widths)):
-
-            self.lookup_table[acc : acc + level_widths[i]] = [i] * level_widths[i]
-            acc += level_widths[i]
-
-    def __call__(self, img):
-        """
-        Args:
-            - img (PIL Image): input image to be quantised.
-        """
-        img = img.point(self.lookup_table)
-
-        return img
-
-
-if __name__ == "__main__":
-
-    img_path = "/home/cyrus/Datasets/VOCdevkit/VOC2012/DistanceTransform/2007_000032.png"
-    img = Image.open(img_path)
-
-    Q = Quantise(level_widths=[1,2,2,3,3,4,5,6,7,8,9,10])
-    T = T.ToTensor()
-
-    out = Q(img)
-    out.show()
-
-    tensor = T(out)
-    print(tensor)
