@@ -59,7 +59,7 @@ TRAIN_LR = 0.007
 TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
 TRAIN_EPOCHS = 46
-VAL_FRACTION = 0.2
+VAL_FRACTION = 0.5
 
 MODEL_NAME = 'deeplabv3plus_Y'
 MODEL_BACKBONE = 'xception'
@@ -96,6 +96,9 @@ def adjust_lr(optimizer, i, max_i):
 def show(img):
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1,2,0)), interpolation="nearest")
+
+def class2colour():
+    pass
 
 
 # Dataset transforms
@@ -241,17 +244,16 @@ for epoch in range(TRAIN_EPOCHS):
           % (epoch+1, TRAIN_EPOCHS, i+1, lr, train_loss, val_loss))
 
     # Log stats on tensorboard
-    # Only get first image of batch (TODO: change to whole batch)
     train_input_tb = make_grid(train_inputs).cpu().numpy()
-    train_label_tb = make_grid(train_labels.unsqueeze(1)).cpu().numpy()
-
     val_input_tb = make_grid(val_inputs).cpu().numpy()
+
+    train_label_tb = make_grid(train_labels.unsqueeze(1)).cpu().numpy()
     val_label_tb = make_grid(val_labels.unsqueeze(1)).cpu().numpy()
 
-    train_prediction_tb = torch.argmax(train_predictions[0],
-                                       dim=0).cpu().unsqueeze(0).numpy()
-    val_prediction_tb = torch.argmax(val_predictions[0],
-                                     dim=0).cpu().unsqueeze(0).numpy()
+    train_prediction_tb = make_grid(torch.argmax(train_predictions,
+                                    dim=1).unsqueeze(1)).cpu().numpy()
+    val_prediction_tb = make_grid(torch.argmax(val_predictions,
+                                  dim=1).unsqueeze(1)).cpu().numpy()
 
     train_pix_accuracy = (np.sum(train_label_tb == train_prediction_tb)
                          / (DATA_RESCALE ** 2))
@@ -291,5 +293,6 @@ print("FINISHED: %s has been saved." %save_path)
 # fix eval() loss which is currently way higher than train() loss
 #   leads: set track_runnin_stats to false; dont reuse same bn layer in multiple places
 
+# confusion matrix
 # implement two-head model
 # add intermediate vector stage (maybe not needed)
