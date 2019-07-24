@@ -3,7 +3,11 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sn
+from sklearn.metrics import confusion_matrix
 from tensorboardX import SummaryWriter
+from tensorboardX.utils import figure_to_image
 import torch
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
@@ -42,6 +46,7 @@ CLASSES = ["aeroplane",
            "sofa",
            "train",
            "tvmonitor"]
+ENERGY_LEVELS = 13
 DATALOADER_JOBS = 4
 DSET_ROOT = "/home/cyrus/Datasets"
 
@@ -60,6 +65,7 @@ TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
 TRAIN_EPOCHS = 46
 VAL_FRACTION = 0.5
+ADJUST_LR = False
 
 MODEL_NAME = 'deeplabv3plus_Y'
 MODEL_BACKBONE = 'xception'
@@ -97,8 +103,27 @@ def show(img):
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1,2,0)), interpolation="nearest")
 
-def class2colour():
-    pass
+def colormap(batch, cmap="viridis"):
+    """
+    Convert grayscale images to matplotlib colormapped image.
+
+    Args:
+        - batch (3D tensor): images to convert.
+        - cmap (string): name of colormap to use.
+    """
+    cmap = plt.cm.get_cmap(name=cmap)
+
+    # Get rid of singleton dimension (n. channels)
+    batch = batch.squeeze()
+
+    # Apply colormap and get rid of alpha channel
+    batch = torch.tensor(cmap(batch))[..., 0:3]
+
+    # Swap dimensions to match NCHW format
+    batch = batch.permute(0, 3, 1, 2)
+
+    return batch
+
 
 
 # Dataset transforms
@@ -157,7 +182,7 @@ if LOG:
                                             now.strftime("%Y%m%d-%H%M")))
 
 # Model setup
-model = Deeplabv3plus_Y(n_classes=13)
+model = Deeplabv3plus_Y(n_classes=ENERGY_LEVELS)
 
 # Move model to GPU devices
 device = torch.device(0)
@@ -205,7 +230,11 @@ for epoch in range(TRAIN_EPOCHS):
         # Convert labels to integers
         train_labels = train_labels.mul(255).round().long().squeeze()
 
-        lr = adjust_lr(optimiser, i, max_i)
+        if ADJUST_LR:
+            lr = adjust_lr(optimiser, i, max_i)
+        else:
+            lr = TRAIN_LR
+
         optimiser.zero_grad()
 
         # Calculate loss
@@ -221,6 +250,8 @@ for epoch in range(TRAIN_EPOCHS):
 
 
     val_loss = 0.0
+    total_labels = torch.tensor((), dtype=torch.long)
+    total_predictions = torch.tensor((), dtype=torch.long)
 
     model.train()
     with torch.no_grad():
@@ -231,9 +262,13 @@ for epoch in range(TRAIN_EPOCHS):
             val_labels = val_labels.mul(255).round().long().squeeze()
 
             val_predictions = model(val_inputs)
-            loss = criterion(val_predictions, val_labels)
 
+            loss = criterion(val_predictions, val_labels)
             val_loss += loss.item()
+
+            # Accumulate labels and predictions for confusion matrix
+            total_labels = torch.cat((total_labels, val_labels.cpu().flatten()))
+            total_predictions = torch.cat((total_predictions, torch.argmax(val_predictions, dim=1).cpu().flatten()))
 
 
     # average losses on all batches
@@ -247,13 +282,17 @@ for epoch in range(TRAIN_EPOCHS):
     train_input_tb = make_grid(train_inputs).cpu().numpy()
     val_input_tb = make_grid(val_inputs).cpu().numpy()
 
-    train_label_tb = make_grid(train_labels.unsqueeze(1)).cpu().numpy()
-    val_label_tb = make_grid(val_labels.unsqueeze(1)).cpu().numpy()
+    train_label_tb = make_grid(colormap(train_labels.float().div(ENERGY_LEVELS)
+                                        .unsqueeze(1).cpu())).numpy()
+    val_label_tb = make_grid(colormap(val_labels.float().div(ENERGY_LEVELS)
+                                      .unsqueeze(1).cpu())).numpy()
 
-    train_prediction_tb = make_grid(torch.argmax(train_predictions,
-                                    dim=1).unsqueeze(1)).cpu().numpy()
-    val_prediction_tb = make_grid(torch.argmax(val_predictions,
-                                  dim=1).unsqueeze(1)).cpu().numpy()
+    train_prediction_tb = make_grid(colormap(torch.argmax(train_predictions, dim=1)
+                                              .float().div(ENERGY_LEVELS).unsqueeze(1)
+                                              .cpu())).numpy()
+    val_prediction_tb = make_grid(colormap(torch.argmax(val_predictions, dim=1)
+                                            .float().div(ENERGY_LEVELS).unsqueeze(1)
+                                            .cpu())).numpy()
 
     train_pix_accuracy = (np.sum(train_label_tb == train_prediction_tb)
                          / (DATA_RESCALE ** 2))
@@ -269,9 +308,36 @@ for epoch in range(TRAIN_EPOCHS):
     # it seems like tensorboard doesn't like saving a lot of images,
     # so save only every 10 epochs
     if epoch % 10 == 0:
+
         tbX_logger.add_image("train_input", train_input_tb, epoch)
         tbX_logger.add_image("train_label", train_label_tb, epoch)
         tbX_logger.add_image("train_prediction", train_prediction_tb, epoch)
+
+        tbX_logger.add_image("val_input", val_input_tb, epoch)
+        tbX_logger.add_image("val_label", val_label_tb, epoch)
+        tbX_logger.add_image("val_prediction", val_prediction_tb, epoch)
+
+        # Get confusion matrix
+        confusion = confusion_matrix(total_labels, total_predictions).astype(float)
+        # create normalised matrix
+        confusion_n = np.copy(confusion)
+        for i in range(len(confusion_n)):
+            confusion_n[i] = confusion_n[i] / confusion_n[i].sum()
+
+        # make figures, convert to images and log to tensorboard
+        fig = plt.figure(figsize=(9,7))
+        sn.heatmap(pd.DataFrame(confusion / (DATA_RESCALE ** 2)), annot=True)
+        plt.ylabel("True")
+        plt.xlabel("Predicted")
+        confusion_img = figure_to_image(fig, close=True)
+        tbX_logger.add_image("val_confusion_matrix", confusion_img, epoch)
+
+        fig_n = plt.figure(figsize=(9,7))
+        sn.heatmap(pd.DataFrame(confusion_n), annot=True)
+        plt.ylabel("True")
+        plt.xlabel("Predicted")
+        confusion_n_img = figure_to_image(fig_n, close=True)
+        tbX_logger.add_image("val_confusion_matrix_normalised", confusion_n_img, epoch)
 
     # Save checkpoint
     if epoch % 100 == 0 and epoch != 0:
@@ -280,6 +346,7 @@ for epoch in range(TRAIN_EPOCHS):
         torch.save(model.state_dict(), save_path)
         print("%s has been saved." %save_path)
 
+tbX_logger.close()
 
 # Save final trained model
 save_path = os.path.join(PRETRAINED_PATH, "%s_%s_%s_epoch%d_final.pth"
@@ -288,11 +355,10 @@ torch.save(model.state_dict(), save_path)
 print("FINISHED: %s has been saved." %save_path)
 
 # list of TODO's:
-# save targets and predictions as colours instead of class number
-# make same images appear at multiple timesteps on tensorboardX
 # fix eval() loss which is currently way higher than train() loss
 #   leads: set track_runnin_stats to false; dont reuse same bn layer in multiple places
 
-# confusion matrix
+# try weighted loss or focal loss
 # implement two-head model
 # add intermediate vector stage (maybe not needed)
+# implement coco dataset training
