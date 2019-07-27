@@ -67,6 +67,7 @@ TRAIN_EPOCHS = 45
 VAL_FRACTION = 0.5
 ADJUST_LR = False
 LEVEL_WIDTHS = [1,2,2,3,3,4,5,6,8,10,14,20]
+ENERGY_LEVELS = len(LEVEL_WIDTHS) + 1
 
 MODEL_NAME = 'deeplabv3plus_Y'
 MODEL_BACKBONE = 'xception'
@@ -189,7 +190,7 @@ if LOG:
                                             now.strftime("%Y%m%d-%H%M")))
 
 # Model setup
-model = Deeplabv3plus_Y(n_classes=len(LEVEL_WIDTHS))
+model = Deeplabv3plus_Y(n_classes=ENERGY_LEVELS)
 
 # Move model to GPU devices
 device = torch.device(0)
@@ -222,7 +223,7 @@ optimiser = optim.SGD(
         ],
         momentum=TRAIN_MOMENTUM)
 
-counts = [] * len(LEVEL_WIDTHS)
+counts = [0] * ENERGY_LEVELS
 
 # Training loop
 i = 0
@@ -258,12 +259,12 @@ for epoch in range(TRAIN_EPOCHS):
         i += 1
 
         # Accumulate pixel belonging to each class (for weighted loss)
-        for class_i  in range(len(LEVEL_WIDTHS)):
+        for class_i in range(ENERGY_LEVELS):
             counts[class_i] += torch.nonzero(train_labels.flatten() == class_i).flatten().size(0)
-        counts /= BATCH_SIZE
-    
+        counts = [c / BATCH_SIZE for c in counts]
+
     # Print counts
-    counts /= len(loader_train)
+    counts = [c / len(loader_train) for c in counts]
     print("Class counts per image:\n", counts)
 
 
@@ -301,16 +302,16 @@ for epoch in range(TRAIN_EPOCHS):
     train_input_tb = make_grid(train_inputs).cpu().numpy()
     val_input_tb = make_grid(val_inputs).cpu().numpy()
 
-    train_label_tb = make_grid(colormap(train_labels.float().div(len(LEVEL_WIDTHS))
+    train_label_tb = make_grid(colormap(train_labels.float().div(ENERGY_LEVELS)
                                         .unsqueeze(1).cpu())).numpy()
-    val_label_tb = make_grid(colormap(val_labels.float().div(len(LEVEL_WIDTHS))
+    val_label_tb = make_grid(colormap(val_labels.float().div(ENERGY_LEVELS)
                                       .unsqueeze(1).cpu())).numpy()
 
     train_prediction_tb = make_grid(colormap(torch.argmax(train_predictions, dim=1)
-                                              .float().div(len(LEVEL_WIDTHS)).unsqueeze(1)
+                                              .float().div(ENERGY_LEVELS).unsqueeze(1)
                                               .cpu())).numpy()
     val_prediction_tb = make_grid(colormap(torch.argmax(val_predictions, dim=1)
-                                            .float().div(len(LEVEL_WIDTHS)).unsqueeze(1)
+                                            .float().div(ENERGY_LEVELS).unsqueeze(1)
                                             .cpu())).numpy()
 
     train_pix_accuracy = (np.sum(train_label_tb == train_prediction_tb)
