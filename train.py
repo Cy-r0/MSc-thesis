@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+from timeit import default_timer
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -46,7 +47,6 @@ CLASSES = ["aeroplane",
            "sofa",
            "train",
            "tvmonitor"]
-ENERGY_LEVELS = 13
 DATALOADER_JOBS = 4
 DSET_ROOT = "/home/cyrus/Datasets"
 
@@ -63,9 +63,10 @@ BATCH_SIZE = 9
 TRAIN_LR = 0.007
 TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
-TRAIN_EPOCHS = 46
+TRAIN_EPOCHS = 45
 VAL_FRACTION = 0.5
 ADJUST_LR = False
+LEVEL_WIDTHS = [1,2,2,3,3,4,5,6,8,10,14,20]
 
 MODEL_NAME = 'deeplabv3plus_Y'
 MODEL_BACKBONE = 'xception'
@@ -125,9 +126,14 @@ def colormap(batch, cmap="viridis"):
     return batch
 
 
+# Fix all seeds for reproducibility
+#np.random.seed(777)
+#torch.manual_seed(777)
+#torch.backends.cudnn.deterministic = True
+#torch.backends.cudnn.benchmark = False
 
 # Dataset transforms
-transform = T.Compose([myT.Quantise(level_widths=[1,2,2,3,3,4,5,6,8,10,14,20]),
+transform = T.Compose([myT.Quantise(level_widths=LEVEL_WIDTHS),
                        myT.Resize(DATA_RESCALE),
                        myT.RandomCrop(DATA_RANDOMCROP),
                        myT.ToTensor(),
@@ -174,6 +180,7 @@ show(make_grid(tgt))
 plt.show()
 """
 
+
 now = datetime.now()
 
 # Initialise tensorboardX logger
@@ -182,7 +189,7 @@ if LOG:
                                             now.strftime("%Y%m%d-%H%M")))
 
 # Model setup
-model = Deeplabv3plus_Y(n_classes=ENERGY_LEVELS)
+model = Deeplabv3plus_Y(n_classes=len(LEVEL_WIDTHS))
 
 # Move model to GPU devices
 device = torch.device(0)
@@ -207,13 +214,15 @@ if RESUME:
 model.to(device)
 
 # Set training parameters
-criterion = nn.CrossEntropyLoss()#ignore_index=0)
+criterion = nn.CrossEntropyLoss()
 optimiser = optim.SGD(
         params = [
             {'params': get_params(model, key='1x'), 'lr': TRAIN_LR},
             {'params': get_params(model, key='10x'), 'lr': 10*TRAIN_LR}
         ],
         momentum=TRAIN_MOMENTUM)
+
+counts = [] * len(LEVEL_WIDTHS)
 
 # Training loop
 i = 0
@@ -248,6 +257,15 @@ for epoch in range(TRAIN_EPOCHS):
         train_loss += loss.item()
         i += 1
 
+        # Accumulate pixel belonging to each class (for weighted loss)
+        for class_i  in range(len(LEVEL_WIDTHS)):
+            counts[class_i] += torch.nonzero(train_labels.flatten() == class_i).flatten().size(0)
+        counts /= BATCH_SIZE
+    
+    # Print counts
+    counts /= len(loader_train)
+    print("Class counts per image:\n", counts)
+
 
     val_loss = 0.0
     total_labels = torch.tensor((), dtype=torch.long)
@@ -268,7 +286,8 @@ for epoch in range(TRAIN_EPOCHS):
 
             # Accumulate labels and predictions for confusion matrix
             total_labels = torch.cat((total_labels, val_labels.cpu().flatten()))
-            total_predictions = torch.cat((total_predictions, torch.argmax(val_predictions, dim=1).cpu().flatten()))
+            total_predictions = torch.cat((total_predictions,
+                                           torch.argmax(val_predictions, dim=1).cpu().flatten()))
 
 
     # average losses on all batches
@@ -282,16 +301,16 @@ for epoch in range(TRAIN_EPOCHS):
     train_input_tb = make_grid(train_inputs).cpu().numpy()
     val_input_tb = make_grid(val_inputs).cpu().numpy()
 
-    train_label_tb = make_grid(colormap(train_labels.float().div(ENERGY_LEVELS)
+    train_label_tb = make_grid(colormap(train_labels.float().div(len(LEVEL_WIDTHS))
                                         .unsqueeze(1).cpu())).numpy()
-    val_label_tb = make_grid(colormap(val_labels.float().div(ENERGY_LEVELS)
+    val_label_tb = make_grid(colormap(val_labels.float().div(len(LEVEL_WIDTHS))
                                       .unsqueeze(1).cpu())).numpy()
 
     train_prediction_tb = make_grid(colormap(torch.argmax(train_predictions, dim=1)
-                                              .float().div(ENERGY_LEVELS).unsqueeze(1)
+                                              .float().div(len(LEVEL_WIDTHS)).unsqueeze(1)
                                               .cpu())).numpy()
     val_prediction_tb = make_grid(colormap(torch.argmax(val_predictions, dim=1)
-                                            .float().div(ENERGY_LEVELS).unsqueeze(1)
+                                            .float().div(len(LEVEL_WIDTHS)).unsqueeze(1)
                                             .cpu())).numpy()
 
     train_pix_accuracy = (np.sum(train_label_tb == train_prediction_tb)
@@ -326,7 +345,7 @@ for epoch in range(TRAIN_EPOCHS):
 
         # make figures, convert to images and log to tensorboard
         fig = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(confusion / (DATA_RESCALE ** 2)), annot=True)
+        sn.heatmap(pd.DataFrame(confusion / (len(loader_val) * BATCH_SIZE)), annot=True, fmt=".0f")
         plt.ylabel("True")
         plt.xlabel("Predicted")
         confusion_img = figure_to_image(fig, close=True)
