@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+from pprint import pprint
 from timeit import default_timer
 
 import matplotlib.pyplot as plt
@@ -66,7 +67,7 @@ TRAIN_MOMENTUM = 0.9
 TRAIN_EPOCHS = 45
 VAL_FRACTION = 0.5
 ADJUST_LR = False
-LEVEL_WIDTHS = [1,2,2,3,3,4,5,6,8,10,14,20]
+LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
 ENERGY_LEVELS = len(LEVEL_WIDTHS) + 1
 
 MODEL_NAME = 'deeplabv3plus_Y'
@@ -128,10 +129,10 @@ def colormap(batch, cmap="viridis"):
 
 
 # Fix all seeds for reproducibility
-#np.random.seed(777)
-#torch.manual_seed(777)
-#torch.backends.cudnn.deterministic = True
-#torch.backends.cudnn.benchmark = False
+np.random.seed(777)
+torch.manual_seed(777)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # Dataset transforms
 transform = T.Compose([myT.Quantise(level_widths=LEVEL_WIDTHS),
@@ -215,7 +216,15 @@ if RESUME:
 model.to(device)
 
 # Set training parameters
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(weight=torch.tensor(261500).div(torch.tensor(
+                                                        [14000, 25500,
+                                                         23000, 25000,
+                                                         24000, 22500,
+                                                         22500, 22000,
+                                                         24000, 58500],
+                                                         dtype=torch.float))
+                                                        .to(device))
+
 optimiser = optim.SGD(
         params = [
             {'params': get_params(model, key='1x'), 'lr': TRAIN_LR},
@@ -259,13 +268,13 @@ for epoch in range(TRAIN_EPOCHS):
         i += 1
 
         # Accumulate pixel belonging to each class (for weighted loss)
-        for class_i in range(ENERGY_LEVELS):
-            counts[class_i] += torch.nonzero(train_labels.flatten() == class_i).flatten().size(0)
-        counts = [c / BATCH_SIZE for c in counts]
+        #for class_i in range(ENERGY_LEVELS):
+         #   counts[class_i] += torch.nonzero(train_labels.flatten() == class_i).flatten().size(0)
 
     # Print counts
-    counts = [c / len(loader_train) for c in counts]
-    print("Class counts per image:\n", counts)
+    #counts = [c / (len(loader_train) * BATCH_SIZE) for c in counts]
+    #print("Class counts per image:")
+    #pprint(counts)
 
 
     val_loss = 0.0
