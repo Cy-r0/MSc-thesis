@@ -55,12 +55,13 @@ DATA_RESCALE = 512
 DATA_RANDOMCROP = 512
 
 TRAIN_GPUS = 2
-TEST_GPUS = 1
+TEST_GPUS = 2
 
-RESUME = True
+RESUME = False
 PRETRAINED_PATH = "models/pretrained"
 
-BATCH_SIZE = 9
+TRAIN_BATCH_SIZE = 9
+TEST_BATCH_SIZE = 9
 TRAIN_LR = 0.007
 TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
@@ -150,14 +151,14 @@ VOCW_val = VOCDistance(DSET_ROOT,
                        transform=transform)
 
 loader_train = DataLoader(VOCW_train,
-                          batch_size = BATCH_SIZE,
+                          batch_size = TRAIN_BATCH_SIZE,
                           sampler=sampler.SubsetRandomSampler(
                               range(int(len(VOCW_train) * (1 - VAL_FRACTION)))),
                           num_workers = DATALOADER_JOBS,
                           pin_memory = True,
                           drop_last=True)
 loader_val = DataLoader(VOCW_train,
-                        batch_size = BATCH_SIZE,
+                        batch_size = TEST_BATCH_SIZE,
                         sampler=sampler.SubsetRandomSampler(
                             range(int(len(VOCW_train) * (1 - VAL_FRACTION)),
                                   len(VOCW_train))),
@@ -234,6 +235,9 @@ optimiser = optim.SGD(
 
 counts = [0] * ENERGY_LEVELS
 
+start = torch.cuda.Event(enable_timing=True)
+end = torch.cuda.Event(enable_timing=True)
+
 # Training loop
 i = 0
 max_i = TRAIN_EPOCHS * len(loader_train)
@@ -245,7 +249,7 @@ for epoch in range(TRAIN_EPOCHS):
     for train_batch_i, train_batch in enumerate(loader_train):
 
         train_inputs = train_batch["image"].to(device)
-        train_labels = train_batch["target"].to(device)
+        train_labels = train_batch["dist"].to(device)
         # Convert labels to integers
         train_labels = train_labels.mul(255).round().long().squeeze()
 
@@ -271,7 +275,7 @@ for epoch in range(TRAIN_EPOCHS):
          #   counts[class_i] += torch.nonzero(train_labels.flatten() == class_i).flatten().size(0)
 
     # Print counts
-    #counts = [c / (len(loader_train) * BATCH_SIZE) for c in counts]
+    #counts = [c / (len(loader_train) * TRAIN_BATCH_SIZE) for c in counts]
     #print("Class counts per image:")
     #pprint(counts)
 
@@ -288,7 +292,14 @@ for epoch in range(TRAIN_EPOCHS):
             val_labels = val_batch["target"].to(device)
             val_labels = val_labels.mul(255).round().long().squeeze()
 
+
+            #start.record()
+
             val_predictions = model(val_inputs)
+
+            #end.record()
+            #torch.cuda.synchronize()
+            #print("forward time:", start.elapsed_time(end))
 
             loss = criterion(val_predictions, val_labels)
             val_loss += loss.item()
@@ -354,7 +365,7 @@ for epoch in range(TRAIN_EPOCHS):
 
         # make figures, convert to images and log to tensorboard
         fig = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(confusion / (len(loader_val) * BATCH_SIZE)), annot=True, fmt=".0f")
+        sn.heatmap(pd.DataFrame(confusion / (len(loader_val) * TEST_BATCH_SIZE)), annot=True, fmt=".0f")
         plt.ylabel("True")
         plt.xlabel("Predicted")
         confusion_img = figure_to_image(fig, close=True)
@@ -383,10 +394,10 @@ torch.save(model.state_dict(), save_path)
 print("FINISHED: %s has been saved." %save_path)
 
 # list of TODO's:
-# fix eval() loss which is currently way higher than train() loss
-#   leads: set track_runnin_stats to false; dont reuse same bn layer in multiple places
 
-# try weighted loss or focal loss
+# find out what layers[0] means for the backbone network
+
+# try focal loss
 # implement two-head model
 # add intermediate vector stage (maybe not needed)
 # implement coco dataset training

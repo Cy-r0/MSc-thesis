@@ -1,3 +1,8 @@
+"""
+These transforms apply the exact same operation (even random transforms) to both
+the input image and the targets (only accepts two targets at a time).
+"""
+
 from collections.abc import Iterable as Iterable
 import numbers
 
@@ -8,7 +13,7 @@ import torchvision.transforms.functional as F
 
 class Normalise(object):
     """
-    Normalises only the image (not the target) according to mean and std.
+    Normalises only the image (not the targets) according to mean and std.
 
     Args:
         - mean (sequence): sequence of means for each channel.
@@ -21,21 +26,18 @@ class Normalise(object):
         self.inplace = inplace
     
     def __call__(self, sample):
-        """
-        Args:
-            - sample (dict of tensors): sample containing image and target.
-        """
-        img, target = sample["image"], sample["target"]
+
+        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
 
         img = F.normalize(img, self.mean, self.std, self.inplace)
 
-        return {"image": img, "target": target}
+        return {"image": img, "seg": seg, "dist": dist}
 
 
 class Quantise(object):
     """
     Quantizes pixel values.
-    Should only be applied to targets (i.e. distance transformed images).
+    Should only be applied to the distance transformed target.
 
     Args:
         - level_widths (sequence): width of each quantisation level, starting
@@ -56,23 +58,17 @@ class Quantise(object):
             acc += level_widths[i]
 
     def __call__(self, sample):
-        """
-        Args:
-            - sample (dict): sample containing image and target.
 
-        Returns:
-            - sample (dict).
-        """
-        img, target = sample["image"], sample["target"]
+        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
         
-        target = target.point(self.lookup_table)
+        dist = dist.point(self.lookup_table)
 
-        return {"image": img, "target": target}
+        return {"image": img, "seg": seg, "dist": dist}
 
 
 class RandomCrop(object):
     """
-    Randomly crop both image and target.
+    Randomly crop both image and targets.
 
     Args:
         - size (sequence or int): size of output image.
@@ -85,29 +81,25 @@ class RandomCrop(object):
             self.size = size
     
     def __call__(self, sample):
-        """
-        Args:
-            - sample (dict): sample containing image and target.
-        
-        Returns:
-            - sample (dict).
-        """
-        img, target = sample["image"], sample["target"]
+
+        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
 
         i, j, h, w = T.RandomCrop.get_params(img, output_size=self.size)
 
         img = F.crop(img, i, j, h, w)
-        target = F.crop(target, i, j, h, w)
+        seg = F.crop(seg, i, j, h, w)
+        dist = F.crop(dist, i, j, h, w)
 
-        return {"image": img, "target": target}
+        return {"image": img, "seg": seg, "dist": dist}
 
 
 class Resize(object):
     """
-    Resize images.
+    Resize both image and targets.
 
     Args:
-        - 
+        - size (sequence or int): size to rescale to.
+        - interpolation (PIL constant): type of interpolation to use.
     """
 
     def __init__(self, size, interpolation=Image.BILINEAR):
@@ -118,19 +110,14 @@ class Resize(object):
         self.interpolation = interpolation
 
     def __call__(self, sample):
-        """
-        Args:
-            - sample (dict): sample containing image and target.
 
-        Returns:
-            - sample (dict).
-        """
-        img, target = sample["image"], sample["target"]
+        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
 
         img = F.resize(img, self.size, self.interpolation)
-        target = F.resize(target, self.size, self.interpolation)
+        seg = F.resize(seg, self.size, self.interpolation)
+        dist = F.resize(dist, self.size, self.interpolation)
 
-        return {"image": img, "target": target}
+        return {"image": img, "seg": seg, "dist": dist}
 
 
 class ToTensor(object):
@@ -139,13 +126,11 @@ class ToTensor(object):
     """
 
     def __call__(self, sample):
-        """
-        Args:
-            - sample (dict): sample containing image and target.
-        """
-        img, target = sample["image"], sample["target"]
+
+        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
 
         img = F.to_tensor(img)
-        target = F.to_tensor(target)
+        seg = F.to_tensor(seg)
+        dist = F.to_tensor(dist)
 
-        return {"image": img, "target": target}
+        return {"image": img, "seg": seg, "dist": dist}

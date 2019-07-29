@@ -3,6 +3,7 @@
 # Modified by Ciro Cursio
 # ----------------------------------------
 
+from timeit import default_timer as timer
 
 import numpy as np
 import torch 
@@ -73,27 +74,27 @@ class Deeplabv3plus_Y(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        print(self.previously_training)
-        # if model started training set all batchnorm tracking
+        # If model started training set all batchnorm tracking
         if self.training:
             _set_track_running_stats(self, val=True)
-        # if model changed to eval mode reset tracking
+        # If model changed to eval mode reset tracking
         elif not self.training:
             _set_track_running_stats(self, val=False)
         
         _ = self.backbone(x)
         layers = self.backbone.get_layers()
+
         feature_aspp = self.aspp(layers[-1])
         feature_aspp = self.dropout1(feature_aspp)
         feature_aspp = self.upsample_sub(feature_aspp)
 
         feature_shallow = self.shortcut_conv(layers[0])
-        feature_cat = torch.cat([feature_aspp,feature_shallow],1)
+        feature_cat = torch.cat([feature_aspp,feature_shallow], 1)
         result = self.cat_conv(feature_cat) 
         result = self.cls_conv(result)
         result = self.upsample4(result)
-        return result
 
+        return result
 
 
 def _set_track_running_stats(model, val):
