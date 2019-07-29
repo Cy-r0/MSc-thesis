@@ -10,7 +10,7 @@ import torchvision.transforms as T
 class VOCDistance(Dataset):
     """
     Dataset based on PASCAL VOC 2012 (assumes it has already been downloaded).
-    It uses rgb as samples and instance watershed transform as labels.
+    It uses rgb as samples and instance distance transform as labels.
 
     Arguments:
         - root (string): root directory of dataset (devkit).
