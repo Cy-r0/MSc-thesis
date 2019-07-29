@@ -73,6 +73,14 @@ class Deeplabv3plus_Y(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        print(self.previously_training)
+        # if model started training set all batchnorm tracking
+        if self.training:
+            _set_track_running_stats(self, val=True)
+        # if model changed to eval mode reset tracking
+        elif not self.training:
+            _set_track_running_stats(self, val=False)
+        
         _ = self.backbone(x)
         layers = self.backbone.get_layers()
         feature_aspp = self.aspp(layers[-1])
@@ -85,3 +93,17 @@ class Deeplabv3plus_Y(nn.Module):
         result = self.cls_conv(result)
         result = self.upsample4(result)
         return result
+
+
+
+def _set_track_running_stats(model, val):
+    for m in model.children():
+
+        # if layer has children, go down one level
+        if list(m.children()):
+            _set_track_running_stats(m, val)
+
+        # if layer has no children and its batchnorm, set value
+        else:
+            if isinstance(m, nn.BatchNorm2d):
+                m.track_running_stats = val

@@ -76,6 +76,27 @@ DATA_NAME = 'VOC2012'
 
 
 # Helper methods
+def colormap(batch, cmap="viridis"):
+    """
+    Convert grayscale images to matplotlib colormapped image.
+
+    Args:
+        - batch (3D tensor): images to convert.
+        - cmap (string): name of colormap to use.
+    """
+    cmap = plt.cm.get_cmap(name=cmap)
+
+    # Get rid of singleton dimension (n. channels)
+    batch = batch.squeeze()
+
+    # Apply colormap and get rid of alpha channel
+    batch = torch.tensor(cmap(batch))[..., 0:3]
+
+    # Swap dimensions to match NCHW format
+    batch = batch.permute(0, 3, 1, 2)
+
+    return batch
+
 def get_params(model, key):
     """
     Get model parameters.
@@ -105,27 +126,6 @@ def adjust_lr(optimizer, i, max_i):
 def show(img):
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1,2,0)), interpolation="nearest")
-
-def colormap(batch, cmap="viridis"):
-    """
-    Convert grayscale images to matplotlib colormapped image.
-
-    Args:
-        - batch (3D tensor): images to convert.
-        - cmap (string): name of colormap to use.
-    """
-    cmap = plt.cm.get_cmap(name=cmap)
-
-    # Get rid of singleton dimension (n. channels)
-    batch = batch.squeeze()
-
-    # Apply colormap and get rid of alpha channel
-    batch = torch.tensor(cmap(batch))[..., 0:3]
-
-    # Swap dimensions to match NCHW format
-    batch = batch.permute(0, 3, 1, 2)
-
-    return batch
 
 
 # Fix all seeds for reproducibility
@@ -256,7 +256,6 @@ for epoch in range(TRAIN_EPOCHS):
 
         optimiser.zero_grad()
 
-        # Calculate loss
         train_predictions = model(train_inputs)
         loss = criterion(train_predictions, train_labels)
 
@@ -281,7 +280,7 @@ for epoch in range(TRAIN_EPOCHS):
     total_labels = torch.tensor((), dtype=torch.long)
     total_predictions = torch.tensor((), dtype=torch.long)
 
-    model.train()
+    model.eval()
     with torch.no_grad():
         for val_batch_i, val_batch in enumerate(loader_val):
 
@@ -330,8 +329,8 @@ for epoch in range(TRAIN_EPOCHS):
     
     tbX_logger.add_scalars("losses", {"train": train_loss,
                                       "val": val_loss}, epoch)
-    tbX_logger.add_scalars("pixel accuracies", {"train": train_pix_accuracy,
-                                                "val": val_pix_accuracy}, epoch)
+    tbX_logger.add_scalars("accuracies", {"train": train_pix_accuracy,
+                                          "val": val_pix_accuracy}, epoch)
     tbX_logger.add_scalar("lr", lr, epoch)
 
     # it seems like tensorboard doesn't like saving a lot of images,
