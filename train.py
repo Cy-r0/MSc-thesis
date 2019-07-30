@@ -19,7 +19,7 @@ import torchvision.transforms as T
 from torchvision.utils import make_grid
 
 from datasets.voc_distance import VOCDistance
-from models.deeplabv3plus_Y import Deeplabv3plus_Y
+from models.deeplabv3plus_multitask import Deeplabv3plus_multitask
 from models.sync_batchnorm import DataParallelWithCallback
 from models.sync_batchnorm.replicate import patch_replication_callback
 import transforms.transforms as myT
@@ -192,7 +192,7 @@ if LOG:
                                             now.strftime("%Y%m%d-%H%M")))
 
 # Model setup
-model = Deeplabv3plus_Y(n_classes=ENERGY_LEVELS)
+model = Deeplabv3plus_multitask(n_classes=ENERGY_LEVELS)
 
 # Move model to GPU devices
 device = torch.device(0)
@@ -208,8 +208,7 @@ if RESUME:
     pretrained_dict = torch.load(os.path.join(PRETRAINED_PATH,
                         "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
     pretrained_dict = {k: v for k, v in pretrained_dict.items()
-                       if "backbone" in k
-                       or "aspp" in k}
+                       if "backbone" in k}
 
     current_dict.update(pretrained_dict)
     model.load_state_dict(current_dict)
@@ -294,9 +293,7 @@ for epoch in range(TRAIN_EPOCHS):
 
 
             #start.record()
-
             val_predictions = model(val_inputs)
-
             #end.record()
             #torch.cuda.synchronize()
             #print("forward time:", start.elapsed_time(end))
