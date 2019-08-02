@@ -68,8 +68,8 @@ TEST_GPUS = 2
 RESUME = False
 PRETRAINED_PATH = "models/pretrained"
 
-TRAIN_BATCH_SIZE = 9
-TEST_BATCH_SIZE = 9
+TRAIN_BATCH_SIZE = 8
+TEST_BATCH_SIZE = 8
 TRAIN_LR = 0.007
 TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
@@ -243,8 +243,8 @@ for epoch in range(TRAIN_EPOCHS):
 
         train_inputs = train_batch["image"].to(device)
         # Labels need to be converted from float 0-1 to integers
-        train_seg = train_batch["seg"].to(device).mul(255).round().long().squeeze()
-        train_dist = train_batch["dist"].to(device).mul(255).round().long().squeeze()
+        train_seg = train_batch["seg"].mul(255).round().long().squeeze().to(device)
+        train_dist = train_batch["dist"].mul(255).round().long().squeeze().to(device)
 
         if ADJUST_LR:
             lr = adjust_lr(optimiser, i, max_i)
