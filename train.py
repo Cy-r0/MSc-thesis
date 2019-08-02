@@ -19,10 +19,17 @@ import torchvision.transforms as T
 from torchvision.utils import make_grid
 
 from datasets.voc_distance import VOCDistance
+from datasets.voc_dual_task import VOCDualTask
+
 from models.deeplabv3plus_multitask import Deeplabv3plus_multitask
 from models.sync_batchnorm import DataParallelWithCallback
 from models.sync_batchnorm.replicate import patch_replication_callback
 import transforms.transforms as myT
+
+
+#os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
+
 
 # Constants here
 LOG = True
@@ -48,6 +55,7 @@ CLASSES = ["aeroplane",
            "sofa",
            "train",
            "tvmonitor"]
+SEG_CLASSES = 21
 DATALOADER_JOBS = 4
 DSET_ROOT = "/home/cyrus/Datasets"
 
@@ -71,7 +79,7 @@ ADJUST_LR = False
 LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
 ENERGY_LEVELS = len(LEVEL_WIDTHS) + 1
 
-MODEL_NAME = 'deeplabv3plus_Y'
+MODEL_NAME = "deeplabv3plus_multitask"
 MODEL_BACKBONE = 'xception'
 DATA_NAME = 'VOC2012'
 
@@ -140,13 +148,14 @@ transform = T.Compose([myT.Quantise(level_widths=LEVEL_WIDTHS),
                        myT.Resize(DATA_RESCALE),
                        myT.RandomCrop(DATA_RANDOMCROP),
                        myT.ToTensor(),
-                       myT.Normalise((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+                       #myT.Normalise((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                       ])
 
 # Dataset setup
-VOCW_train = VOCDistance(DSET_ROOT,
+VOCW_train = VOCDualTask(DSET_ROOT,
                          image_set="train_reduced",
                          transform=transform)
-VOCW_val = VOCDistance(DSET_ROOT,
+VOCW_val = VOCDualTask(DSET_ROOT,
                        image_set="val_reduced",
                        transform=transform)
 
@@ -169,40 +178,24 @@ loader_test = DataLoader(VOCW_val,
 )
 
 
-# show images TODO: delete this
-"""
-dataiter = iter(loader_train)
-batch = dataiter.next()
-
-img = batch["image"]
-tgt = batch["target"]
-
-show(make_grid(img))
-plt.show()
-show(make_grid(tgt))
-plt.show()
-"""
-
-
-now = datetime.now()
-
 # Initialise tensorboardX logger
+now = datetime.now()
 if LOG:
     tbX_logger = SummaryWriter(os.path.join(LOG_PATH,
                                             now.strftime("%Y%m%d-%H%M")))
 
 # Model setup
-model = Deeplabv3plus_multitask(n_classes=ENERGY_LEVELS)
+model = Deeplabv3plus_multitask(seg_classes=SEG_CLASSES,
+                                dist_classes=ENERGY_LEVELS)
 
 # Move model to GPU devices
 device = torch.device(0)
-print("GPUs found:", torch.cuda.device_count())
-print("GPUs used:", TRAIN_GPUS)
+print("GPUs found:", torch.cuda.device_count(), "\tGPUs used:", TRAIN_GPUS)
 
 if TRAIN_GPUS > 1:
     model = nn.DataParallel(model)
 
-# Load pretrained model weights only for backbone network and aspp
+# Load pretrained model weights only for backbone network
 if RESUME:
     current_dict = model.state_dict()
     pretrained_dict = torch.load(os.path.join(PRETRAINED_PATH,
@@ -215,8 +208,9 @@ if RESUME:
 
 model.to(device)
 
-# Set training parameters
-criterion = nn.CrossEntropyLoss(weight=torch.tensor(261500).div(torch.tensor(
+# Set losses (first one for semantics, second one for watershed)
+seg_criterion = nn.CrossEntropyLoss(ignore_index=255)
+dist_criterion = nn.CrossEntropyLoss(weight=torch.tensor(261500).div(torch.tensor(
                                                         [14000, 25500,
                                                          23000, 25000,
                                                          24000, 22500,
@@ -248,9 +242,9 @@ for epoch in range(TRAIN_EPOCHS):
     for train_batch_i, train_batch in enumerate(loader_train):
 
         train_inputs = train_batch["image"].to(device)
-        train_labels = train_batch["dist"].to(device)
-        # Convert labels to integers
-        train_labels = train_labels.mul(255).round().long().squeeze()
+        # Labels need to be converted from float 0-1 to integers
+        train_seg = train_batch["seg"].to(device).mul(255).round().long().squeeze()
+        train_dist = train_batch["dist"].to(device).mul(255).round().long().squeeze()
 
         if ADJUST_LR:
             lr = adjust_lr(optimiser, i, max_i)
@@ -259,8 +253,11 @@ for epoch in range(TRAIN_EPOCHS):
 
         optimiser.zero_grad()
 
-        train_predictions = model(train_inputs)
-        loss = criterion(train_predictions, train_labels)
+        train_predicted_seg, train_predicted_dist = model(train_inputs)
+
+        seg_loss = seg_criterion(train_predicted_seg, train_seg)
+        dist_loss = dist_criterion(train_predicted_dist, train_dist)
+        loss = seg_loss + dist_loss
 
         # Backprop and gradient descent
         loss.backward()

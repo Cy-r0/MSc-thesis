@@ -100,9 +100,12 @@ class Resize(object):
     Args:
         - size (sequence or int): size to rescale to.
         - interpolation (PIL constant): type of interpolation to use.
+
+    NB: It's necessary that the interpolation is NEAREST for the targets,
+    otherwise new classes might be created that have no meaning.
     """
 
-    def __init__(self, size, interpolation=Image.BILINEAR):
+    def __init__(self, size, interpolation=Image.NEAREST):
 
         assert isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)
 
