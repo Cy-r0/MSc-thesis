@@ -1,4 +1,5 @@
 from datetime import datetime
+from itertools import chain
 import os
 from pprint import pprint
 from timeit import default_timer
@@ -56,7 +57,7 @@ CLASSES = ["aeroplane",
            "sofa",
            "train",
            "tvmonitor"]
-SEG_CLASSES = 21
+SEG_CLASSES = len(CLASSES) + 1
 DATALOADER_JOBS = 4
 DSET_ROOT = "/home/cyrus/Datasets"
 
@@ -84,8 +85,20 @@ MODEL_NAME = "deeplabv3plus_multitask"
 MODEL_BACKBONE = 'xception'
 DATA_NAME = 'VOC2012'
 
+IMG_LOG_EPOCHS = 10
+
 
 # Helper methods
+
+def adjust_lr(optimizer, i, max_i):
+    """
+    Gradually decrease learning rate as iterations increase.
+    """
+    lr = TRAIN_LR * (1 - i/(max_i + 1)) ** TRAIN_POWER
+    optimizer.param_groups[0]['lr'] = lr
+    optimizer.param_groups[1]['lr'] = 10 * lr
+    return lr
+
 def colormap(batch, cmap="viridis"):
     """
     Convert grayscale images to matplotlib colormapped image.
@@ -124,14 +137,24 @@ def get_params(model, key):
                 for p in m[1].parameters():
                     yield p
 
-def adjust_lr(optimizer, i, max_i):
+def log_confusion_mat(confusion_mat, figsize, title, fmt, epoch):
     """
-    Gradually decrease learning rate as iterations increase.
+    Log confusion matrix to tensorboard as matplotlib figure.
     """
-    lr = TRAIN_LR * (1 - i/(max_i + 1)) ** TRAIN_POWER
-    optimizer.param_groups[0]['lr'] = lr
-    optimizer.param_groups[1]['lr'] = 10 * lr
-    return lr
+    fig = plt.figure(figsize=figsize)
+    sn.heatmap(pd.DataFrame(confusion_mat), annot=True, fmt=fmt)
+    plt.ylabel("True")
+    plt.xlabel("Predicted")
+    confusion_img = figure_to_image(fig, close=True)
+    tbX_logger.add_image(title, confusion_img, epoch)
+
+def normalise_confusion_mat(confusion_mat):
+    normalised = np.zeros(confusion_mat.shape)
+
+    for c_i in range(len(confusion_mat)):
+        normalised[c_i] = confusion_mat[c_i] / confusion_mat[c_i].sum()
+
+    return normalised
 
 def show(img):
     npimg = img.numpy()
@@ -232,6 +255,8 @@ counts = [0] * ENERGY_LEVELS
 start = torch.cuda.Event(enable_timing=True)
 end = torch.cuda.Event(enable_timing=True)
 
+
+
 # Training loop
 i = 0
 max_i = TRAIN_EPOCHS * len(loader_train)
@@ -240,6 +265,15 @@ for epoch in range(TRAIN_EPOCHS):
     train_loss = 0.0
     train_seg_loss = 0.0
     train_dist_loss = 0.0
+    train_seg_acc = 0.0
+    train_dist_acc = 0.0
+
+    # Only initialise confusion matrices when they're going to be logged
+    if epoch % IMG_LOG_EPOCHS == 0:
+        train_seg_confusion = np.zeros((SEG_CLASSES + 1, SEG_CLASSES + 1), dtype="float")
+        train_dist_confusion = np.zeros((ENERGY_LEVELS, ENERGY_LEVELS), dtype="float")
+        val_seg_confusion = np.zeros((SEG_CLASSES + 1, SEG_CLASSES + 1), dtype="float")
+        val_dist_confusion = np.zeros((ENERGY_LEVELS, ENERGY_LEVELS), dtype="float")
     
     # Initialise tqdm
     tqdm_loader_train = tqdm(loader_train, ascii=True, desc="Train")
@@ -274,7 +308,26 @@ for epoch in range(TRAIN_EPOCHS):
 
         i += 1
 
-        #tqdm.write()
+        # Calculate accuracies
+        train_seg_acc += (torch.sum(train_seg == torch.argmax(train_predicted_seg, dim=1))
+                          .float().div(DATA_RESCALE ** 2 * TRAIN_BATCH_SIZE)).data
+        train_dist_acc += (torch.sum(train_dist == torch.argmax(train_predicted_dist, dim=1))
+                           .float().div(DATA_RESCALE ** 2 * TRAIN_BATCH_SIZE)).data
+
+        # Only calculate confusion matrices every few epochs
+        if epoch % IMG_LOG_EPOCHS == 0:
+
+            total_seg_labels = train_seg.cpu().flatten()
+            total_seg_predictions = torch.argmax(train_predicted_seg, dim=1).cpu().flatten()
+            train_seg_confusion += confusion_matrix(total_seg_labels, total_seg_predictions,
+                                                    labels=list(chain(range(SEG_CLASSES), [255])))
+            train_seg_confusion /= TRAIN_BATCH_SIZE
+
+            total_dist_labels = train_dist.cpu().flatten()
+            total_dist_predictions = torch.argmax(train_predicted_dist, dim=1).cpu().flatten()
+            train_dist_confusion += confusion_matrix(total_dist_labels, total_dist_predictions,
+                                                        labels=list(range(ENERGY_LEVELS)))
+            train_dist_confusion /= TRAIN_BATCH_SIZE
 
         # Accumulate pixel belonging to each class (for weighted loss)
         #for class_i in range(ENERGY_LEVELS):
@@ -289,11 +342,8 @@ for epoch in range(TRAIN_EPOCHS):
     val_loss = 0.0
     val_seg_loss = 0.0
     val_dist_loss = 0.0
-
-    total_seg_labels = torch.tensor((), dtype=torch.long)
-    total_seg_predictions = torch.tensor((), dtype=torch.long)
-    total_dist_labels = torch.tensor((), dtype=torch.long)
-    total_dist_predictions = torch.tensor((), dtype=torch.long)
+    val_seg_acc = 0.0
+    val_dist_acc = 0.0
 
     # Initialise tqdm
     tqdm_loader_val = tqdm(loader_val, ascii=True, desc="Valid")
@@ -320,22 +370,39 @@ for epoch in range(TRAIN_EPOCHS):
             val_seg_loss += seg_loss.item()
             val_dist_loss += dist_loss.item()
 
-            # Accumulate labels and predictions for confusion matrices
-            total_seg_labels = torch.cat((total_seg_labels, val_seg.cpu().flatten()))
-            total_seg_predictions = torch.cat((total_seg_predictions,
-                                           torch.argmax(val_predicted_seg, dim=1).cpu().flatten()))
-            total_dist_labels = torch.cat((total_dist_labels, val_dist.cpu().flatten()))
-            total_dist_predictions = torch.cat((total_dist_predictions,
-                                           torch.argmax(val_predicted_dist, dim=1).cpu().flatten()))
+            # Calculate accuracies
+            val_seg_acc += (torch.sum(val_seg == torch.argmax(val_predicted_seg, dim=1))
+                            .float().div(DATA_RESCALE ** 2 * TRAIN_BATCH_SIZE)).data
+            val_dist_acc += (torch.sum(val_dist == torch.argmax(val_predicted_dist, dim=1))
+                             .float().div(DATA_RESCALE ** 2 * TRAIN_BATCH_SIZE)).data
 
+            if epoch % IMG_LOG_EPOCHS == 0:
+                # Accumulate labels and predictions for confusion matrices
+                total_seg_labels = val_seg.cpu().flatten()
+                total_seg_predictions = torch.argmax(val_predicted_seg, dim=1).cpu().flatten()
+                val_seg_confusion += confusion_matrix(total_seg_labels, total_seg_predictions,
+                                                        labels=list(chain(range(SEG_CLASSES), [255])))
+                val_seg_confusion /= TEST_BATCH_SIZE
 
-    # average losses on all batches
+                total_dist_labels = val_dist.cpu().flatten()
+                total_dist_predictions = torch.argmax(val_predicted_dist, dim=1).cpu().flatten()
+                val_dist_confusion += confusion_matrix(total_dist_labels, total_dist_predictions,
+                                                        labels=list(range(ENERGY_LEVELS)))
+                val_dist_confusion /= TEST_BATCH_SIZE
+
+    # Average losses on all batches
     train_loss /= len(loader_train)
     train_seg_loss /= len(loader_train)
     train_dist_loss /= len(loader_train)
+    train_seg_acc /= len(loader_train)
+    train_dist_acc /= len(loader_train)
+
+    # Average accuracies on batches
     val_loss /= len(loader_val)
     val_seg_loss /= len(loader_val)
     val_dist_loss /= len(loader_val)
+    val_seg_acc /= len(loader_val)
+    val_dist_acc /= len(loader_val)
 
 
     print("Epoch: %d/%d\ti: %d\tlr: %g\ttrain_loss: %g\tval_loss: %g\n"
@@ -353,10 +420,6 @@ for epoch in range(TRAIN_EPOCHS):
     train_dist_prediction_tb = make_grid(colormap(torch.argmax(train_predicted_dist, dim=1)
                                               .float().div(ENERGY_LEVELS).unsqueeze(1)
                                               .cpu())).numpy()                                         
-    train_seg_acc = (np.sum(train_seg_tb == train_seg_prediction_tb)
-                         / (DATA_RESCALE ** 2))
-    train_dist_acc = (np.sum(train_dist_tb == train_dist_prediction_tb)
-                         / (DATA_RESCALE ** 2))
 
     # Convert val data for plotting
     val_input_tb = make_grid(val_inputs).cpu().numpy()
@@ -370,29 +433,23 @@ for epoch in range(TRAIN_EPOCHS):
     val_dist_prediction_tb = make_grid(colormap(torch.argmax(val_predicted_dist, dim=1)
                                               .float().div(ENERGY_LEVELS).unsqueeze(1)
                                               .cpu())).numpy()
-    val_seg_acc = (np.sum(val_seg_tb == val_seg_prediction_tb)
-                         / (DATA_RESCALE ** 2))
-    val_dist_acc = (np.sum(val_dist_tb == val_dist_prediction_tb)
-                         / (DATA_RESCALE ** 2))
     
     # Log scalars to tensorboardX
     tbX_logger.add_scalars("total_losses", {"train_loss": train_loss,
                                             "val_loss": val_loss}, epoch)
-    tbX_logger.add_scalars("separate_losses", {"train_seg_loss": train_seg_loss,
-                                               "val_seg_loss": val_seg_loss,
-                                               "train_dist_loss": train_dist_loss,
-                                               "val_dist_loss": val_dist_loss}, epoch)
-    tbX_logger.add_scalars("total_acc", {"train_acc": train_seg_acc + train_dist_acc,
-                                         "val_acc": val_seg_acc + val_dist_acc}, epoch)
-    tbX_logger.add_scalars("separate_acc", {"train_seg_acc": train_seg_acc,
-                                            "val_seg_acc": val_seg_acc,
-                                            "train_dist_acc": train_dist_acc,
-                                            "val_dist_acc": val_dist_acc}, epoch)                                 
+    tbX_logger.add_scalars("seg_losses", {"train_seg_loss": train_seg_loss,
+                                          "val_seg_loss": val_seg_loss}, epoch)
+    tbX_logger.add_scalars("dist_losses", {"train_dist_loss": train_dist_loss,
+                                           "val_dist_loss": val_dist_loss}, epoch)
+    tbX_logger.add_scalars("seg_acc", {"train_seg_acc": train_seg_acc,
+                                       "val_seg_acc": val_seg_acc}, epoch)
+    tbX_logger.add_scalars("dist_acc", {"train_dist_acc": train_dist_acc,
+                                        "val_dist_acc": val_dist_acc}, epoch)                                 
     tbX_logger.add_scalar("lr", lr, epoch)
 
     # it seems like tensorboard doesn't like saving a lot of images,
-    # so log images only every 10 epochs
-    if epoch % 10 == 0:
+    # so log images only once every few epochs
+    if epoch % IMG_LOG_EPOCHS == 0:
 
         # Training images
         tbX_logger.add_image("train_input", train_input_tb, epoch)
@@ -407,47 +464,29 @@ for epoch in range(TRAIN_EPOCHS):
         tbX_logger.add_image("val_dist", val_dist_tb, epoch)    
         tbX_logger.add_image("val_dist_prediction", val_dist_prediction_tb, epoch)
 
-        # Get confusion matrices
-        seg_confusion = confusion_matrix(total_seg_labels, total_seg_predictions).astype(float)
-        dist_confusion = confusion_matrix(total_dist_labels, total_dist_predictions).astype(float)
+        # Divide unnormalised matrices by n. of image pixels
+        train_seg_confusion /= len(loader_train)
+        train_dist_confusion /= len(loader_train)
+        val_seg_confusion /= len(loader_val)
+        val_dist_confusion /= len(loader_val)
 
-        # create normalised matrices
-        seg_confusion_n = np.copy(seg_confusion)
-        for c_i in range(len(seg_confusion_n)):
-            seg_confusion_n[c_i] = seg_confusion_n[c_i] / seg_confusion_n[c_i].sum()
+        # Normalise confusion matrices
+        train_seg_confusion_n = normalise_confusion_mat(train_seg_confusion)
+        train_dist_confusion_n = normalise_confusion_mat(train_dist_confusion)
+        val_seg_confusion_n = normalise_confusion_mat(val_seg_confusion)
+        val_dist_confusion_n = normalise_confusion_mat(val_dist_confusion)
 
-        dist_confusion_n = np.copy(dist_confusion)
-        for c_i in range(len(dist_confusion_n)):
-            dist_confusion_n[c_i] = dist_confusion_n[c_i] / dist_confusion_n[c_i].sum()
+        # Log confusion matrices to tensorboard
+        log_confusion_mat(train_seg_confusion, (16,10), "train_confusion_seg", "0.0f", epoch)
+        log_confusion_mat(train_dist_confusion, (9,7), "train_confusion_dist", "0.0f", epoch)
+        log_confusion_mat(val_seg_confusion, (16,10), "val_confusion_seg", "0.0f", epoch)
+        log_confusion_mat(val_dist_confusion, (9,7), "val_confusion_dist", "0.0f", epoch)
 
-        # make figures, convert to images and log to tensorboard
-        fig = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(seg_confusion / (len(loader_val) * TEST_BATCH_SIZE)), annot=True, fmt=".0f")
-        plt.ylabel("True")
-        plt.xlabel("Predicted")
-        seg_confusion_img = figure_to_image(fig, close=True)
-        tbX_logger.add_image("val_confusion_matrix_seg", seg_confusion_img, epoch)
-
-        fig_n = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(seg_confusion_n), annot=True)
-        plt.ylabel("True")
-        plt.xlabel("Predicted")
-        seg_confusion_n_img = figure_to_image(fig_n, close=True)
-        tbX_logger.add_image("val_confusion_matrix_seg_normalised", seg_confusion_n_img, epoch)
-
-        fig = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(dist_confusion / (len(loader_val) * TEST_BATCH_SIZE)), annot=True, fmt=".0f")
-        plt.ylabel("True")
-        plt.xlabel("Predicted")
-        dist_confusion_img = figure_to_image(fig, close=True)
-        tbX_logger.add_image("val_confusion_matrix_dist", dist_confusion_img, epoch)
-
-        fig_n = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(dist_confusion_n), annot=True)
-        plt.ylabel("True")
-        plt.xlabel("Predicted")
-        dist_confusion_n_img = figure_to_image(fig_n, close=True)
-        tbX_logger.add_image("val_confusion_matrix_dist_normalised", dist_confusion_n_img, epoch)
+        # Log normalised confusion matrices to tensorboard
+        log_confusion_mat(train_seg_confusion_n, (16,10), "train_confusion_seg_n", "0.3f", epoch)
+        log_confusion_mat(train_dist_confusion_n, (9,7), "train_confusion_dist_n", "0.3f", epoch)
+        log_confusion_mat(val_seg_confusion_n, (16,10), "val_confusion_seg_n", "0.3f", epoch)
+        log_confusion_mat(val_dist_confusion_n, (9,7), "val_confusion_dist_n", "0.3f", epoch)        
 
 
     # Save checkpoint
