@@ -17,6 +17,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, sampler
 import torchvision.transforms as T
 from torchvision.utils import make_grid
+from tqdm import tqdm
 
 from datasets.voc_distance import VOCDistance
 from datasets.voc_dual_task import VOCDualTask
@@ -65,7 +66,7 @@ DATA_RANDOMCROP = 512
 TRAIN_GPUS = 2
 TEST_GPUS = 2
 
-RESUME = False
+RESUME = True
 PRETRAINED_PATH = "models/pretrained"
 
 TRAIN_BATCH_SIZE = 8
@@ -75,7 +76,7 @@ TRAIN_POWER = 0.9
 TRAIN_MOMENTUM = 0.9
 TRAIN_EPOCHS = 45
 VAL_FRACTION = 0.5
-ADJUST_LR = False
+ADJUST_LR = True
 LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
 ENERGY_LEVELS = len(LEVEL_WIDTHS) + 1
 
@@ -237,14 +238,19 @@ max_i = TRAIN_EPOCHS * len(loader_train)
 for epoch in range(TRAIN_EPOCHS):
 
     train_loss = 0.0
+    train_seg_loss = 0.0
+    train_dist_loss = 0.0
     
+    # Initialise tqdm
+    tqdm_loader_train = tqdm(loader_train, ascii=True, desc="Train")
+
     model.train()
-    for train_batch_i, train_batch in enumerate(loader_train):
+    for train_batch_i, train_batch in enumerate(tqdm_loader_train):
 
         train_inputs = train_batch["image"].to(device)
         # Labels need to be converted from float 0-1 to integers
-        train_seg = train_batch["seg"].mul(255).round().long().squeeze().to(device)
-        train_dist = train_batch["dist"].mul(255).round().long().squeeze().to(device)
+        train_seg = train_batch["seg"].mul(255).round().long().squeeze(1).to(device)
+        train_dist = train_batch["dist"].mul(255).round().long().squeeze(1).to(device)
 
         if ADJUST_LR:
             lr = adjust_lr(optimiser, i, max_i)
@@ -255,16 +261,20 @@ for epoch in range(TRAIN_EPOCHS):
 
         train_predicted_seg, train_predicted_dist = model(train_inputs)
 
+        # Calculate losses
         seg_loss = seg_criterion(train_predicted_seg, train_seg)
         dist_loss = dist_criterion(train_predicted_dist, train_dist)
         loss = seg_loss + dist_loss
-
-        # Backprop and gradient descent
         loss.backward()
         optimiser.step()
 
         train_loss += loss.item()
+        train_seg_loss += seg_loss.item()
+        train_dist_loss += dist_loss.item()
+
         i += 1
+
+        #tqdm.write()
 
         # Accumulate pixel belonging to each class (for weighted loss)
         #for class_i in range(ENERGY_LEVELS):
@@ -277,100 +287,168 @@ for epoch in range(TRAIN_EPOCHS):
 
 
     val_loss = 0.0
-    total_labels = torch.tensor((), dtype=torch.long)
-    total_predictions = torch.tensor((), dtype=torch.long)
+    val_seg_loss = 0.0
+    val_dist_loss = 0.0
+
+    total_seg_labels = torch.tensor((), dtype=torch.long)
+    total_seg_predictions = torch.tensor((), dtype=torch.long)
+    total_dist_labels = torch.tensor((), dtype=torch.long)
+    total_dist_predictions = torch.tensor((), dtype=torch.long)
+
+    # Initialise tqdm
+    tqdm_loader_val = tqdm(loader_val, ascii=True, desc="Valid")
 
     model.eval()
     with torch.no_grad():
-        for val_batch_i, val_batch in enumerate(loader_val):
+        for val_batch_i, val_batch in enumerate(tqdm_loader_val):
 
             val_inputs = val_batch["image"].to(device)
-            val_labels = val_batch["target"].to(device)
-            val_labels = val_labels.mul(255).round().long().squeeze()
-
+            val_seg = val_batch["seg"].mul(255).round().long().squeeze(1).to(device)
+            val_dist = val_batch["dist"].mul(255).round().long().squeeze(1).to(device)
 
             #start.record()
-            val_predictions = model(val_inputs)
+            val_predicted_seg, val_predicted_dist = model(val_inputs)
             #end.record()
             #torch.cuda.synchronize()
             #print("forward time:", start.elapsed_time(end))
 
-            loss = criterion(val_predictions, val_labels)
+            # Calculate losses
+            seg_loss = seg_criterion(val_predicted_seg, val_seg)
+            dist_loss = dist_criterion(val_predicted_dist, val_dist)
+            loss = seg_loss + dist_loss
             val_loss += loss.item()
+            val_seg_loss += seg_loss.item()
+            val_dist_loss += dist_loss.item()
 
-            # Accumulate labels and predictions for confusion matrix
-            total_labels = torch.cat((total_labels, val_labels.cpu().flatten()))
-            total_predictions = torch.cat((total_predictions,
-                                           torch.argmax(val_predictions, dim=1).cpu().flatten()))
+            # Accumulate labels and predictions for confusion matrices
+            total_seg_labels = torch.cat((total_seg_labels, val_seg.cpu().flatten()))
+            total_seg_predictions = torch.cat((total_seg_predictions,
+                                           torch.argmax(val_predicted_seg, dim=1).cpu().flatten()))
+            total_dist_labels = torch.cat((total_dist_labels, val_dist.cpu().flatten()))
+            total_dist_predictions = torch.cat((total_dist_predictions,
+                                           torch.argmax(val_predicted_dist, dim=1).cpu().flatten()))
 
 
     # average losses on all batches
     train_loss /= len(loader_train)
+    train_seg_loss /= len(loader_train)
+    train_dist_loss /= len(loader_train)
     val_loss /= len(loader_val)
+    val_seg_loss /= len(loader_val)
+    val_dist_loss /= len(loader_val)
 
-    print("epoch: %d/%d\ti: %d\tlr: %g\ttrain_loss: %g\tval_loss: %g"
-          % (epoch+1, TRAIN_EPOCHS, i+1, lr, train_loss, val_loss))
 
-    # Log stats on tensorboard
+    print("Epoch: %d/%d\ti: %d\tlr: %g\ttrain_loss: %g\tval_loss: %g\n"
+          % (epoch+1, TRAIN_EPOCHS, i, lr, train_loss, val_loss))
+
+    # Convert training data for plotting
     train_input_tb = make_grid(train_inputs).cpu().numpy()
-    val_input_tb = make_grid(val_inputs).cpu().numpy()
-
-    train_label_tb = make_grid(colormap(train_labels.float().div(ENERGY_LEVELS)
+    train_seg_tb = make_grid(colormap(train_seg.float().div(SEG_CLASSES)
                                         .unsqueeze(1).cpu())).numpy()
-    val_label_tb = make_grid(colormap(val_labels.float().div(ENERGY_LEVELS)
-                                      .unsqueeze(1).cpu())).numpy()
+    train_seg_prediction_tb = make_grid(colormap(torch.argmax(train_predicted_seg, dim=1)
+                                              .float().div(SEG_CLASSES).unsqueeze(1)
+                                              .cpu())).numpy()
+    train_dist_tb = make_grid(colormap(train_dist.float().div(ENERGY_LEVELS)
+                                        .unsqueeze(1).cpu())).numpy()
+    train_dist_prediction_tb = make_grid(colormap(torch.argmax(train_predicted_dist, dim=1)
+                                              .float().div(ENERGY_LEVELS).unsqueeze(1)
+                                              .cpu())).numpy()                                         
+    train_seg_acc = (np.sum(train_seg_tb == train_seg_prediction_tb)
+                         / (DATA_RESCALE ** 2))
+    train_dist_acc = (np.sum(train_dist_tb == train_dist_prediction_tb)
+                         / (DATA_RESCALE ** 2))
 
-    train_prediction_tb = make_grid(colormap(torch.argmax(train_predictions, dim=1)
+    # Convert val data for plotting
+    val_input_tb = make_grid(val_inputs).cpu().numpy()
+    val_seg_tb = make_grid(colormap(val_seg.float().div(SEG_CLASSES)
+                                      .unsqueeze(1).cpu())).numpy()
+    val_seg_prediction_tb = make_grid(colormap(torch.argmax(val_predicted_seg, dim=1)
+                                            .float().div(SEG_CLASSES).unsqueeze(1)
+                                            .cpu())).numpy()
+    val_dist_tb = make_grid(colormap(val_dist.float().div(ENERGY_LEVELS)
+                                        .unsqueeze(1).cpu())).numpy()
+    val_dist_prediction_tb = make_grid(colormap(torch.argmax(val_predicted_dist, dim=1)
                                               .float().div(ENERGY_LEVELS).unsqueeze(1)
                                               .cpu())).numpy()
-    val_prediction_tb = make_grid(colormap(torch.argmax(val_predictions, dim=1)
-                                            .float().div(ENERGY_LEVELS).unsqueeze(1)
-                                            .cpu())).numpy()
-
-    train_pix_accuracy = (np.sum(train_label_tb == train_prediction_tb)
+    val_seg_acc = (np.sum(val_seg_tb == val_seg_prediction_tb)
                          / (DATA_RESCALE ** 2))
-    val_pix_accuracy = (np.sum(val_label_tb == val_prediction_tb)
+    val_dist_acc = (np.sum(val_dist_tb == val_dist_prediction_tb)
                          / (DATA_RESCALE ** 2))
     
-    tbX_logger.add_scalars("losses", {"train": train_loss,
-                                      "val": val_loss}, epoch)
-    tbX_logger.add_scalars("accuracies", {"train": train_pix_accuracy,
-                                          "val": val_pix_accuracy}, epoch)
+    # Log scalars to tensorboardX
+    tbX_logger.add_scalars("total_losses", {"train_loss": train_loss,
+                                            "val_loss": val_loss}, epoch)
+    tbX_logger.add_scalars("separate_losses", {"train_seg_loss": train_seg_loss,
+                                               "val_seg_loss": val_seg_loss,
+                                               "train_dist_loss": train_dist_loss,
+                                               "val_dist_loss": val_dist_loss}, epoch)
+    tbX_logger.add_scalars("total_acc", {"train_acc": train_seg_acc + train_dist_acc,
+                                         "val_acc": val_seg_acc + val_dist_acc}, epoch)
+    tbX_logger.add_scalars("separate_acc", {"train_seg_acc": train_seg_acc,
+                                            "val_seg_acc": val_seg_acc,
+                                            "train_dist_acc": train_dist_acc,
+                                            "val_dist_acc": val_dist_acc}, epoch)                                 
     tbX_logger.add_scalar("lr", lr, epoch)
 
     # it seems like tensorboard doesn't like saving a lot of images,
-    # so save only every 10 epochs
+    # so log images only every 10 epochs
     if epoch % 10 == 0:
 
+        # Training images
         tbX_logger.add_image("train_input", train_input_tb, epoch)
-        tbX_logger.add_image("train_label", train_label_tb, epoch)
-        tbX_logger.add_image("train_prediction", train_prediction_tb, epoch)
-
+        tbX_logger.add_image("train_seg", train_seg_tb, epoch)
+        tbX_logger.add_image("train_seg_prediction", train_seg_prediction_tb, epoch)
+        tbX_logger.add_image("train_dist", train_dist_tb, epoch)    
+        tbX_logger.add_image("train_dist_prediction", train_dist_prediction_tb, epoch)
+        # Validation images
         tbX_logger.add_image("val_input", val_input_tb, epoch)
-        tbX_logger.add_image("val_label", val_label_tb, epoch)
-        tbX_logger.add_image("val_prediction", val_prediction_tb, epoch)
+        tbX_logger.add_image("val_seg", val_seg_tb, epoch)
+        tbX_logger.add_image("val_seg_prediction", val_seg_prediction_tb, epoch)
+        tbX_logger.add_image("val_dist", val_dist_tb, epoch)    
+        tbX_logger.add_image("val_dist_prediction", val_dist_prediction_tb, epoch)
 
-        # Get confusion matrix
-        confusion = confusion_matrix(total_labels, total_predictions).astype(float)
-        # create normalised matrix
-        confusion_n = np.copy(confusion)
-        for i in range(len(confusion_n)):
-            confusion_n[i] = confusion_n[i] / confusion_n[i].sum()
+        # Get confusion matrices
+        seg_confusion = confusion_matrix(total_seg_labels, total_seg_predictions).astype(float)
+        dist_confusion = confusion_matrix(total_dist_labels, total_dist_predictions).astype(float)
+
+        # create normalised matrices
+        seg_confusion_n = np.copy(seg_confusion)
+        for c_i in range(len(seg_confusion_n)):
+            seg_confusion_n[c_i] = seg_confusion_n[c_i] / seg_confusion_n[c_i].sum()
+
+        dist_confusion_n = np.copy(dist_confusion)
+        for c_i in range(len(dist_confusion_n)):
+            dist_confusion_n[c_i] = dist_confusion_n[c_i] / dist_confusion_n[c_i].sum()
 
         # make figures, convert to images and log to tensorboard
         fig = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(confusion / (len(loader_val) * TEST_BATCH_SIZE)), annot=True, fmt=".0f")
+        sn.heatmap(pd.DataFrame(seg_confusion / (len(loader_val) * TEST_BATCH_SIZE)), annot=True, fmt=".0f")
         plt.ylabel("True")
         plt.xlabel("Predicted")
-        confusion_img = figure_to_image(fig, close=True)
-        tbX_logger.add_image("val_confusion_matrix", confusion_img, epoch)
+        seg_confusion_img = figure_to_image(fig, close=True)
+        tbX_logger.add_image("val_confusion_matrix_seg", seg_confusion_img, epoch)
 
         fig_n = plt.figure(figsize=(9,7))
-        sn.heatmap(pd.DataFrame(confusion_n), annot=True)
+        sn.heatmap(pd.DataFrame(seg_confusion_n), annot=True)
         plt.ylabel("True")
         plt.xlabel("Predicted")
-        confusion_n_img = figure_to_image(fig_n, close=True)
-        tbX_logger.add_image("val_confusion_matrix_normalised", confusion_n_img, epoch)
+        seg_confusion_n_img = figure_to_image(fig_n, close=True)
+        tbX_logger.add_image("val_confusion_matrix_seg_normalised", seg_confusion_n_img, epoch)
+
+        fig = plt.figure(figsize=(9,7))
+        sn.heatmap(pd.DataFrame(dist_confusion / (len(loader_val) * TEST_BATCH_SIZE)), annot=True, fmt=".0f")
+        plt.ylabel("True")
+        plt.xlabel("Predicted")
+        dist_confusion_img = figure_to_image(fig, close=True)
+        tbX_logger.add_image("val_confusion_matrix_dist", dist_confusion_img, epoch)
+
+        fig_n = plt.figure(figsize=(9,7))
+        sn.heatmap(pd.DataFrame(dist_confusion_n), annot=True)
+        plt.ylabel("True")
+        plt.xlabel("Predicted")
+        dist_confusion_n_img = figure_to_image(fig_n, close=True)
+        tbX_logger.add_image("val_confusion_matrix_dist_normalised", dist_confusion_n_img, epoch)
+
 
     # Save checkpoint
     if epoch % 100 == 0 and epoch != 0:
