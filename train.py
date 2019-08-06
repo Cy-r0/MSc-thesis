@@ -4,6 +4,7 @@ import os
 from pprint import pprint
 from timeit import default_timer
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -11,6 +12,7 @@ import seaborn as sn
 from sklearn.metrics import confusion_matrix
 from tensorboardX import SummaryWriter
 from tensorboardX.utils import figure_to_image
+import timeit
 import torch
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
@@ -156,6 +158,44 @@ def normalise_confusion_mat(confusion_mat):
 
     return normalised
 
+def postprocess(segs, dists, energy_cut, min_area):
+    """
+    Extract object instances from neural network outputs (seg and dist).
+    Current pipeline:
+        Binarise dist image at chosen energy level (lower=black, higher=white);
+        Find contours on dist image;
+        Discard contours with small area;
+        Calculate overlap of each contour with seg image and assign class to blobs;
+        Discard contours whose class is background;
+        Grow remaining contours (How? e.g. reintegrating lower level into them).
+
+    Args:
+        - segs (4D ndarray of uint8).
+        - dists (4D ndarray of uint8).
+        - energy_cut (int): energy level to binarize image at.
+        - min_area (int): minimum area of a contour in pixels.
+    """
+
+    for seg, dist in zip(segs, dists):
+
+        # This block is super fast (0.5 ms)
+        _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
+        _, contours, _ = cv2.findContours(np.copy(thres), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        #contoured = np.copy(dist)
+
+        # This list comprehension is quite expensive (8 ms)
+        contours = [c for c in contours if cv2.contourArea(c) >= min_area]
+
+        
+
+
+        #cv2.drawContours(contoured, contours, -1, 255, 1)
+        #cv2.imshow("img", contoured)
+        #cv2.waitKey(0)
+        print(el)
+
+
 def show(img):
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1,2,0)), interpolation="nearest")
@@ -294,6 +334,11 @@ for epoch in range(TRAIN_EPOCHS):
         optimiser.zero_grad()
 
         train_predicted_seg, train_predicted_dist = model(train_inputs)
+
+        # Convert images to uint8 before postprocessing
+        pp_seg = torch.argmax(train_predicted_seg, dim=1).cpu().byte().numpy()
+        pp_dist = torch.argmax(train_predicted_dist, dim=1).cpu().byte().numpy()
+        postprocess(pp_seg, pp_dist, energy_cut=1, min_area=int(DATA_RESCALE ** 2 * 0.0001))
 
         # Calculate losses
         seg_loss = seg_criterion(train_predicted_seg, train_seg)
