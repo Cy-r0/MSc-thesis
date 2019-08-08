@@ -1,11 +1,19 @@
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sn
+from tensorboardX.utils import figure_to_image
+import torch
+import torch.nn as nn
 
 
 
-def adjust_lr(optimizer, i, max_i):
+def adjust_lr(optimizer, i, max_i, initial_lr, pow):
     """
     Gradually decrease learning rate as iterations increase.
     """
-    lr = TRAIN_LR * (1 - i/(max_i + 1)) ** TRAIN_POWER
+    lr = initial_lr * (1 - i/(max_i + 1)) ** pow
     optimizer.param_groups[0]['lr'] = lr
     optimizer.param_groups[1]['lr'] = 10 * lr
     return lr
@@ -48,7 +56,7 @@ def get_params(model, key):
                 for p in m[1].parameters():
                     yield p
 
-def log_confusion_mat(confusion_mat, figsize, title, fmt, epoch):
+def log_confusion_mat(logger, confusion_mat, figsize, title, fmt, epoch):
     """
     Log confusion matrix to tensorboard as matplotlib figure.
     """
@@ -57,7 +65,7 @@ def log_confusion_mat(confusion_mat, figsize, title, fmt, epoch):
     plt.ylabel("True")
     plt.xlabel("Predicted")
     confusion_img = figure_to_image(fig, close=True)
-    tbX_logger.add_image(title, confusion_img, epoch)
+    logger.add_image(title, confusion_img, epoch)
 
 def normalise_confusion_mat(confusion_mat):
     normalised = np.zeros(confusion_mat.shape)
@@ -79,37 +87,44 @@ def postprocess(segs, dists, energy_cut, min_area):
         Grow remaining contours (How? e.g. reintegrating lower level into them).
 
     Args:
-        - segs (4D ndarray of uint8).
-        - dists (3D ndarray of uint8).
+        - segs (4D float ndarray).
+        - dists (4D float ndarray).
         - energy_cut (int): energy level to binarize image at.
         - min_area (int): minimum area of a contour in pixels.
     """
 
-    for seg, dist in zip(segs, dists):
+    pp_segs = segs.cpu().byte().numpy()
+    print(pp_segs.shape)
+    pp_dists = torch.argmax(dists, dim=1).cpu().byte().numpy()
+
+    for seg, dist in zip(pp_segs, pp_dists):
 
         # This block is super fast (0.5 ms)
         _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
         _, contours, _ = cv2.findContours(np.copy(thres), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-        contoured = np.copy(dist)
-
         # This list comprehension is quite expensive (8 ms)
-        contours = [c for c in contours if cv2.contourArea(c) >= min_area]
+        contours = [c for c in contours if cv2.contourArea(c) >= min_area*5]
 
-        for contour in contours:
+        instances = [0] * len(contours)
+
+        for c, contour in enumerate(contours):
 
             for seg_class in seg:
 
-                # Create binary mask from contour
+                # Create binary mask
+                mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+                cv2.drawContours(mask, [contour], -1, 255, -1)
 
-                # Mask && seg class to select only pixels inside mask
+                # Mask each class "hotmap" 
+                seg_class = cv2.bitwise_and(seg_class, seg_class, mask=mask)
 
-                # 
+                cv2.imshow("img", seg)
+                cv2.waitKey(0)
+            
+            instances[c] = seg   #TODO: convert to a dictionary with class, masks and bbox
 
-
-        cv2.drawContours(contoured, contours, -1, 255, 1)
-        cv2.imshow("img", contoured)
-        cv2.waitKey(0)
+    return instances
 
 
 def show(img):
