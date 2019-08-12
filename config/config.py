@@ -25,8 +25,7 @@ class VOCSettings(object):
         self.DATA_RESCALE = 512
         self.DATA_RANDOMCROP = 512
 
-        self.CLASSES = {0: "background",
-                        1: "aeroplane",
+        self.CLASSES = {1: "aeroplane",
                         2: "bicycle",
                         3: "bird",
                         4: "boat",
@@ -45,9 +44,8 @@ class VOCSettings(object):
                         17: "sheep",
                         18: "sofa",
                         19: "train",
-                        20: "tvmonitor",
-                        255: "unlabelled"}
-        self.N_CLASSES = len(self.CLASSES)
+                        20: "tvmonitor"}
+        self.N_CLASSES = len(self.CLASSES) + 2
 
         self.LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
         self.N_ENERGY_LEVELS = len(self.LEVEL_WIDTHS) + 1
