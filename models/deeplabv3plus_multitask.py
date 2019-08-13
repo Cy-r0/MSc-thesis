@@ -30,7 +30,7 @@ class Deeplabv3plus_multitask(nn.Module):
     segmentation and the other for watershed-based instance segmentation.
     """
 
-    def __init__(self, n_classes):
+    def __init__(self, seg_classes, dist_classes):
         super(Deeplabv3plus_multitask, self).__init__()
 
         input_channel = 2048
@@ -41,7 +41,6 @@ class Deeplabv3plus_multitask(nn.Module):
                          rate=16//OUTPUT_STRIDE,
                          bn_mom=BN_MOMENTUM)
         self.dropout1 = nn.Dropout(0.5)
-        self.upsample4 = nn.UpsamplingBilinear2d(scale_factor=4)
         self.upsample_sub = nn.UpsamplingBilinear2d(scale_factor=OUTPUT_STRIDE//4)
 
         # First branch
@@ -64,7 +63,7 @@ class Deeplabv3plus_multitask(nn.Module):
                 nn.BatchNorm2d(ASPP_OUT_DIM, momentum=BN_MOMENTUM),
                 nn.ReLU(inplace=True),
                 nn.Dropout(0.1))
-        self.cls_conv_1 = nn.Conv2d(ASPP_OUT_DIM, n_classes, 1, 1, padding=0)
+        self.cls_conv_1 = nn.Conv2d(ASPP_OUT_DIM, seg_classes, 1, 1, padding=0)
 
         # Second branch
         self.shortcut_conv_2 = nn.Sequential(
@@ -86,7 +85,7 @@ class Deeplabv3plus_multitask(nn.Module):
                 nn.BatchNorm2d(ASPP_OUT_DIM, momentum=BN_MOMENTUM),
                 nn.ReLU(inplace=True),
                 nn.Dropout(0.1))
-        self.cls_conv_2 = nn.Conv2d(ASPP_OUT_DIM, n_classes, 1, 1, padding=0)
+        self.cls_conv_2 = nn.Conv2d(ASPP_OUT_DIM, dist_classes, 1, 1, padding=0)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -96,13 +95,15 @@ class Deeplabv3plus_multitask(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        # If model started training set all batchnorm tracking
+        # WARNING! This snippet prevents network from using batch_size=1
         if self.training:
             _set_track_running_stats(self, val=True)
         # If model changed to eval mode reset tracking
         elif not self.training:
             _set_track_running_stats(self, val=False)
         
+        self.upsample4_modified = nn.UpsamplingBilinear2d(size=(x.shape[2], x.shape[3]))
+
         _ = self.backbone(x)
         layers = self.backbone.get_layers()
 
@@ -110,17 +111,22 @@ class Deeplabv3plus_multitask(nn.Module):
         feature_aspp = self.dropout1(feature_aspp)
         feature_aspp = self.upsample_sub(feature_aspp)
 
+        self.upsample_slightly = nn.UpsamplingBilinear2d(size=(feature_aspp.shape[2],
+                                                               feature_aspp.shape[3]))
+
         feature_shallow_1 = self.shortcut_conv_1(layers[0])
+        feature_shallow_1 = self.upsample_slightly(feature_shallow_1)
         feature_cat_1 = torch.cat([feature_aspp, feature_shallow_1], 1)
         result_1 = self.cat_conv_1(feature_cat_1)
         result_1 = self.cls_conv_1(result_1)
-        result_1 = self.upsample4(result_1)
+        result_1 = self.upsample4_modified(result_1)
 
         feature_shallow_2 = self.shortcut_conv_2(layers[0])
+        feature_shallow_2 = self.upsample_slightly(feature_shallow_2)
         feature_cat_2 = torch.cat([feature_aspp, feature_shallow_2], 1)
         result_2 = self.cat_conv_2(feature_cat_2)
         result_2 = self.cls_conv_2(result_2)
-        result_2 = self.upsample4_2(result_2)
+        result_2 = self.upsample4_modified(result_2)
 
         return result_1, result_2
 
