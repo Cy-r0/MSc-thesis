@@ -184,7 +184,9 @@ class Xception(nn.Module):
         x = self.relu(x)
         
         x = self.block1(x)
+
         x = self.block2(x)
+
         self.layers.append(self.block2.hook_layer)
         x = self.block3(x)
         # self.layers.append(self.block3.hook_layer)
@@ -204,7 +206,7 @@ class Xception(nn.Module):
         x = self.block17(x)
         x = self.block18(x)
         x = self.block19(x)
-        x = self.block20(x)       
+        x = self.block20(x)   
         # self.layers.append(self.block20.hook_layer)
 
         x = self.conv3(x)
