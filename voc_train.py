@@ -28,7 +28,7 @@ from models.deeplabv3plus_multitask import Deeplabv3plus_multitask
 from models.sync_batchnorm import DataParallelWithCallback
 from models.sync_batchnorm.replicate import patch_replication_callback
 import transforms.transforms as myT
-from settings import VOCSettings
+from config.config import VOCSettings
 import utils.helpers as helpers
 
 
@@ -103,7 +103,9 @@ if sett.RESUME:
                         "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
     pretrained_dict = {k: v for k, v in pretrained_dict.items()
                        if "backbone" in k}
-
+    # Get rid of "module" in pretrained dict keywords if my model is not DataParallel
+    if sett.TRAIN_GPUS == 1:
+        pretrained_dict = {k[7:]: v for k, v in pretrained_dict.items()}
     current_dict.update(pretrained_dict)
     model.load_state_dict(current_dict)
 
@@ -172,13 +174,6 @@ for epoch in range(sett.TRAIN_EPOCHS):
 
         train_predicted_seg, train_predicted_dist = model(train_inputs)
 
-        if epoch == 0:
-            # Convert images to uint8 before postprocessing
-            pp_seg = train_predicted_seg.cpu().byte().numpy()
-            pp_dist = torch.argmax(train_predicted_dist, dim=1).cpu().byte().numpy()
-
-            helpers.postprocess(train_predicted_seg, train_predicted_dist, energy_cut=1, min_area=int(sett.DATA_RESCALE ** 2 * 0.001))
-
         # Calculate losses
         seg_loss = seg_criterion(train_predicted_seg, train_seg)
         dist_loss = dist_criterion(train_predicted_dist, train_dist)
@@ -242,6 +237,16 @@ for epoch in range(sett.TRAIN_EPOCHS):
 
             #start.record()
             val_predicted_seg, val_predicted_dist = model(val_inputs)
+            
+            if epoch == 0:
+                # Softmax predictions
+                SM = nn.Softmax2d()
+                val_predicted_seg = SM(val_predicted_seg)
+                val_predicted_dist = SM(val_predicted_dist)
+                for seg, dist in zip(val_predicted_seg, val_predicted_dist):
+                    print(seg.shape, dist.shape)
+                    instances = helpers.postprocess(seg, dist, energy_cut=1, min_area=int(sett.DATA_RESCALE ** 2 * 0.001))
+            
             #end.record()
             #torch.cuda.synchronize()
             #print("forward time:", start.elapsed_time(end))
@@ -389,6 +394,8 @@ torch.save(model.state_dict(), save_path)
 print("FINISHED: %s has been saved." %save_path)
 
 # list of TODO's:
+
+# FIX DISTANCE TRANSFORM! it currently uses classaug, but the contours are not closed sometimes!!!
 
 # find out what layers[0] means for the backbone network
 

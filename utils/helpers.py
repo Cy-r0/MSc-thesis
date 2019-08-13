@@ -75,7 +75,7 @@ def normalise_confusion_mat(confusion_mat):
 
     return normalised
 
-def postprocess(segs, dists, energy_cut, min_area):
+def postprocess(seg, dist, energy_cut, min_area):
     """
     Extract object instances from neural network outputs (seg and dist).
     Current pipeline:
@@ -87,43 +87,56 @@ def postprocess(segs, dists, energy_cut, min_area):
         Grow remaining contours (How? e.g. reintegrating lower level into them).
 
     Args:
-        - segs (4D float ndarray).
-        - dists (4D float ndarray).
+        - seg (3D float ndarray).
+        - dist (3D float ndarray).
         - energy_cut (int): energy level to binarize image at.
         - min_area (int): minimum area of a contour in pixels.
     """
 
-    pp_segs = segs.cpu().byte().numpy()
-    print(pp_segs.shape)
-    pp_dists = torch.argmax(dists, dim=1).cpu().byte().numpy()
+    seg = seg.cpu().detach().numpy()
+    dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
+    print(seg.shape, dist.shape)
 
-    for seg, dist in zip(pp_segs, pp_dists):
+    instances = []
 
-        # This block is super fast (0.5 ms)
-        _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
-        _, contours, _ = cv2.findContours(np.copy(thres), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    # This block is super fast (0.5 ms)
+    _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
+    _, contours, _ = cv2.findContours(np.copy(thres), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-        # This list comprehension is quite expensive (8 ms)
-        contours = [c for c in contours if cv2.contourArea(c) >= min_area*5]
+    # This list comprehension is quite expensive (8 ms)
+    contours = [c for c in contours if cv2.contourArea(c) >= min_area*5]
 
-        instances = [0] * len(contours)
+    for c, contour in enumerate(contours):
 
-        for c, contour in enumerate(contours):
+        # Create binary mask of contoured region
+        mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+        cv2.drawContours(mask, [contour], -1, 1, -1)
 
-            for seg_class in seg:
+        scores = [0] * len(seg)
 
-                # Create binary mask
-                mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
-                cv2.drawContours(mask, [contour], -1, 255, -1)
+        for s, seg_class in enumerate(seg):
 
-                # Mask each class "hotmap" 
-                seg_class = cv2.bitwise_and(seg_class, seg_class, mask=mask)
+            # Get rid of semantic pixels outside the mask
+            seg_class = cv2.bitwise_and(seg_class, seg_class, mask=mask)
 
-                cv2.imshow("img", seg)
-                cv2.waitKey(0)
-            
-            instances[c] = seg   #TODO: convert to a dictionary with class, masks and bbox
+            # average pixel values for object classification
+            area = cv2.countNonZero(seg_class)
+            average = cv2.sumElems(seg_class)[0] / area
+            assert average >= 0 and average <= 1
+            scores[s] = average
+        
+        instance_dict = {
+            "mask": mask,
+            "scores": scores
+        }
+        instances.append(instance_dict)
+        
+        cv2.imshow("mask", mask)
+        cv2.waitKey(0)
 
+    print(instances)
+
+    # Return a list of instances for each image in the batch
     return instances
 
 
