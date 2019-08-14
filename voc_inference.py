@@ -119,11 +119,18 @@ for batch_i, batch in enumerate(tqdm_loader_test):
     predicted_seg, predicted_dist = model(inputs)
     # Softmax predictions TODO: modify
     SM = nn.Softmax2d()
-    predicted_seg = SM(seg.to(torch.float))#SM(predicted_seg)
-    predicted_dist = SM(dist.to(torch.float))
+    predicted_seg = SM(predicted_seg)
+    predicted_dist = SM(predicted_dist)
     
-    for pred_seg, pred_dist in zip(predicted_seg, predicted_dist):
-        instances = helpers.postprocess(pred_seg, pred_dist, energy_cut=1, min_area=int(sett.DATA_RESCALE ** 2 * 0.001))
+    #TODO: change back to predictions
+    for pred_seg, pred_dist in zip(seg, dist):
+
+
+        pred_seg = pred_seg.cpu()
+        pred_seg[pred_seg == 255] = 0
+        pred_seg_onehot = torch.FloatTensor(22, pred_seg.shape[1], pred_seg.shape[2]).zero_()
+        pred_seg_onehot = pred_seg_onehot.scatter(0, pred_seg, 1)
+        instances = helpers.postprocess(pred_seg_onehot, pred_dist, energy_cut=0)
         for instance in instances:
             # encoded bytestring in mask needs to be converted to ascii
             encoded_mask = mask.encode(np.asfortranarray(instance["mask"]))
@@ -135,7 +142,7 @@ for batch_i, batch in enumerate(tqdm_loader_test):
                 "score": max(instance["scores"])
             }
             json_data.append(instance_dict)
-
+"""
     # Calculate accuracies
     seg_acc += (torch.sum(seg == torch.argmax(predicted_seg, dim=1))
                           .float().div(inputs.shape[2] * inputs.shape[3] * sett.TEST_BATCH_SIZE)).data
@@ -153,9 +160,9 @@ for batch_i, batch in enumerate(tqdm_loader_test):
     dist_confusion += confusion_matrix(total_dist_labels, total_dist_predictions,
                                                 labels=list(range(sett.N_ENERGY_LEVELS)))
     dist_confusion /= sett.TEST_BATCH_SIZE
-
+"""
 # Write results to json
-with open("results/voc2012_validation.json", 'w') as f:
+with open("results/voc2012_train_reduced.json", 'w') as f:
 	json.dump(json_data, f)
 
 # Average accuracies on batches

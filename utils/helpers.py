@@ -76,7 +76,7 @@ def normalise_confusion_mat(confusion_mat):
 
     return normalised
 
-def postprocess(seg, dist, energy_cut, min_area):
+def postprocess(seg, dist, energy_cut, min_area=30, debug=False):
     """
     Extract object instances from neural network outputs (seg and dist).
     Current pipeline:
@@ -91,27 +91,37 @@ def postprocess(seg, dist, energy_cut, min_area):
         - seg (3D float ndarray).
         - dist (3D float ndarray).
         - energy_cut (int): energy level to binarize image at.
-        - min_area (int): minimum area of a contour in pixels.
+        - min_area (int): minimum area of a contour in pixels (empirically determined).
+        - debug (bool): boolean flag that shows how images are processed.
     """
 
-    seg = seg.cpu().detach().numpy()
-    dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
+    seg = torch.clamp(seg, 0.001, 1).cpu().detach().numpy()
+    #dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
+    dist = dist.squeeze(dim=0).cpu().byte().numpy()
 
     instances = []
 
-    cv2.imshow("dist", dist)
-    cv2.waitKey(0)
+    # Show distance img
+    if debug:
+        plt.imshow(dist)
+        plt.show()
 
-    # This block is super fast (0.5 ms)
+    # Cut image at energy level
     _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
     _, contours, _ = cv2.findContours(np.copy(thres), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-    # This list comprehension is quite expensive (8 ms)
-    contours = [c for c in contours if cv2.contourArea(c) >= min_area*5]
+    # Get rid of small contours (they often appear due to noise)
+    contours = [c for c in contours if cv2.contourArea(c) >= min_area]
+
+    # Show all contours
+    if debug:
+        cv2.drawContours(dist, contours, -1, 255, 1)
+        cv2.imshow("all contours bigger than min_area", dist)
+        cv2.waitKey(0)
 
     for c, contour in enumerate(contours):
 
-        # Create binary mask of contoured region (NB: has to be 0 or 1, not 255!)
+        # Create binary mask of contoured region
         mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
         cv2.drawContours(mask, [contour], -1, 1, -1)
 
@@ -135,6 +145,14 @@ def postprocess(seg, dist, energy_cut, min_area):
                 "scores": scores
             }
             instances.append(instance_dict)
+
+            # Show binary mask and print class
+            if debug:
+                print("class:", np.argmax(scores))
+                one_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+                cv2.drawContours(one_mask, [contour], -1, 255, -1)
+                cv2.imshow("mask", one_mask)
+                cv2.waitKey(0)
 
     # Return a list of instances for each image in the batch
     return instances
