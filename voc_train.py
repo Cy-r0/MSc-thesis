@@ -149,9 +149,9 @@ for epoch in range(sett.TRAIN_EPOCHS):
 
     # Only initialise confusion matrices when they're going to be logged
     if epoch % sett.IMG_LOG_EPOCHS == 0:
-        train_seg_confusion = np.zeros((sett.N_CLASSES + 1, sett.N_CLASSES + 1), dtype="float")
+        train_seg_confusion = np.zeros((sett.N_CLASSES, sett.N_CLASSES), dtype="float")
         train_dist_confusion = np.zeros((sett.N_ENERGY_LEVELS, sett.N_ENERGY_LEVELS), dtype="float")
-        val_seg_confusion = np.zeros((sett.N_CLASSES + 1, sett.N_CLASSES + 1), dtype="float")
+        val_seg_confusion = np.zeros((sett.N_CLASSES, sett.N_CLASSES), dtype="float")
         val_dist_confusion = np.zeros((sett.N_ENERGY_LEVELS, sett.N_ENERGY_LEVELS), dtype="float")
     
     # Initialise tqdm
@@ -199,7 +199,7 @@ for epoch in range(sett.TRAIN_EPOCHS):
             total_seg_labels = train_seg.cpu().flatten()
             total_seg_predictions = torch.argmax(train_predicted_seg, dim=1).cpu().flatten()
             train_seg_confusion += confusion_matrix(total_seg_labels, total_seg_predictions,
-                                                    labels=list(chain(range(sett.N_CLASSES), [255])))
+                                                    labels=list(sett.CLASSES.keys()))
             train_seg_confusion /= sett.TRAIN_BATCH_SIZE
 
             total_dist_labels = train_dist.cpu().flatten()
@@ -235,21 +235,7 @@ for epoch in range(sett.TRAIN_EPOCHS):
             val_seg = val_batch["seg"].mul(255).round().long().squeeze(1).to(device)
             val_dist = val_batch["dist"].mul(255).round().long().squeeze(1).to(device)
 
-            #start.record()
             val_predicted_seg, val_predicted_dist = model(val_inputs)
-            
-            if epoch == 0:
-                # Softmax predictions
-                SM = nn.Softmax2d()
-                val_predicted_seg = SM(val_predicted_seg)
-                val_predicted_dist = SM(val_predicted_dist)
-                for seg, dist in zip(val_predicted_seg, val_predicted_dist):
-                    print(seg.shape, dist.shape)
-                    instances = helpers.postprocess(seg, dist, energy_cut=1, min_area=int(sett.DATA_RESCALE ** 2 * 0.001))
-            
-            #end.record()
-            #torch.cuda.synchronize()
-            #print("forward time:", start.elapsed_time(end))
 
             # Calculate losses
             seg_loss = seg_criterion(val_predicted_seg, val_seg)
@@ -270,7 +256,7 @@ for epoch in range(sett.TRAIN_EPOCHS):
                 total_seg_labels = val_seg.cpu().flatten()
                 total_seg_predictions = torch.argmax(val_predicted_seg, dim=1).cpu().flatten()
                 val_seg_confusion += confusion_matrix(total_seg_labels, total_seg_predictions,
-                                                        labels=list(chain(range(sett.N_CLASSES), [255])))
+                                                        labels=list(sett.CLASSES.keys()))
                 val_seg_confusion /= sett.VAL_BATCH_SIZE
 
                 total_dist_labels = val_dist.cpu().flatten()
@@ -353,7 +339,7 @@ for epoch in range(sett.TRAIN_EPOCHS):
         tbX_logger.add_image("val_dist", val_dist_tb, epoch)    
         tbX_logger.add_image("val_dist_prediction", val_dist_prediction_tb, epoch)
 
-        # Divide unnormalised matrices by n. of image pixels
+        # Divide unnormalised matrices
         train_seg_confusion /= len(loader_train)
         train_dist_confusion /= len(loader_train)
         val_seg_confusion /= len(loader_val)
@@ -366,16 +352,16 @@ for epoch in range(sett.TRAIN_EPOCHS):
         val_dist_confusion_n = helpers.normalise_confusion_mat(val_dist_confusion)
 
         # Log confusion matrices to tensorboard
-        helpers.log_confusion_mat(tbX_logger, train_seg_confusion, (16,10), "train_confusion_seg", "0.0f", epoch)
-        helpers.log_confusion_mat(tbX_logger, train_dist_confusion, (9,7), "train_confusion_dist", "0.0f", epoch)
-        helpers.log_confusion_mat(tbX_logger, val_seg_confusion, (16,10), "val_confusion_seg", "0.0f", epoch)
-        helpers.log_confusion_mat(tbX_logger, val_dist_confusion, (9,7), "val_confusion_dist", "0.0f", epoch)
+        helpers.log_confusion_mat(tbX_logger, train_seg_confusion, (16,10), "train_confusion_seg", "0.0f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+        helpers.log_confusion_mat(tbX_logger, train_dist_confusion, (9,7), "train_confusion_dist", "0.0f", epoch, "auto", "auto")
+        helpers.log_confusion_mat(tbX_logger, val_seg_confusion, (16,10), "val_confusion_seg", "0.0f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+        helpers.log_confusion_mat(tbX_logger, val_dist_confusion, (9,7), "val_confusion_dist", "0.0f", epoch, "auto", "auto")
 
         # Log normalised confusion matrices to tensorboard
-        helpers.log_confusion_mat(tbX_logger, train_seg_confusion_n, (16,10), "train_confusion_seg_n", "0.3f", epoch)
-        helpers.log_confusion_mat(tbX_logger, train_dist_confusion_n, (9,7), "train_confusion_dist_n", "0.3f", epoch)
-        helpers.log_confusion_mat(tbX_logger, val_seg_confusion_n, (16,10), "val_confusion_seg_n", "0.3f", epoch)
-        helpers.log_confusion_mat(tbX_logger, val_dist_confusion_n, (9,7), "val_confusion_dist_n", "0.3f", epoch)        
+        helpers.log_confusion_mat(tbX_logger, train_seg_confusion_n, (16,10), "train_confusion_seg_n", "0.3f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+        helpers.log_confusion_mat(tbX_logger, train_dist_confusion_n, (9,7), "train_confusion_dist_n", "0.3f", epoch, "auto", "auto")
+        helpers.log_confusion_mat(tbX_logger, val_seg_confusion_n, (16,10), "val_confusion_seg_n", "0.3f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+        helpers.log_confusion_mat(tbX_logger, val_dist_confusion_n, (9,7), "val_confusion_dist_n", "0.3f", epoch, "auto", "auto")        
 
 
     # Save checkpoint

@@ -13,6 +13,7 @@ class VOCSettings(object):
         # Model settings
         self.RESUME = True
         self.PRETRAINED_PATH = "models/pretrained"
+        self.TRAINED_PATH = "models/pretrained"
         self.MODEL_NAME = "deeplabv3plus_multitask"
         self.MODEL_BACKBONE = "xception"
         self.DATA_NAME = "VOC2012"
@@ -25,7 +26,8 @@ class VOCSettings(object):
         self.DATA_RESCALE = 512
         self.DATA_RANDOMCROP = 512
 
-        self.CLASSES = {1: "aeroplane",
+        self.CLASSES = {0: "background",
+                        1: "aeroplane",
                         2: "bicycle",
                         3: "bird",
                         4: "boat",
@@ -44,8 +46,9 @@ class VOCSettings(object):
                         17: "sheep",
                         18: "sofa",
                         19: "train",
-                        20: "tvmonitor"}
-        self.N_CLASSES = len(self.CLASSES) + 2
+                        20: "tvmonitor",
+                        255: "unlabelled"}
+        self.N_CLASSES = len(self.CLASSES)
 
         self.LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
         self.N_ENERGY_LEVELS = len(self.LEVEL_WIDTHS) + 1
@@ -66,5 +69,8 @@ class VOCSettings(object):
 
         # Validation settings
         self.VAL_FRACTION = 0.5
-        self.VAL_GPUS = 2
         self.VAL_BATCH_SIZE = 8
+
+        # Test settings
+        self.TEST_GPUS = 1
+        self.TEST_BATCH_SIZE = 1

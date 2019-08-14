@@ -56,12 +56,13 @@ def get_params(model, key):
                 for p in m[1].parameters():
                     yield p
 
-def log_confusion_mat(logger, confusion_mat, figsize, title, fmt, epoch):
+def log_confusion_mat(logger, confusion_mat, figsize, title, fmt, epoch, xlabel, ylabel):
     """
     Log confusion matrix to tensorboard as matplotlib figure.
     """
     fig = plt.figure(figsize=figsize)
-    sn.heatmap(pd.DataFrame(confusion_mat), annot=True, fmt=fmt)
+    sn.heatmap(pd.DataFrame(confusion_mat), annot=True, fmt=fmt, xticklabels=xlabel,
+                                                                 yticklabels=ylabel)
     plt.ylabel("True")
     plt.xlabel("Predicted")
     confusion_img = figure_to_image(fig, close=True)
@@ -95,9 +96,11 @@ def postprocess(seg, dist, energy_cut, min_area):
 
     seg = seg.cpu().detach().numpy()
     dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
-    print(seg.shape, dist.shape)
 
     instances = []
+
+    cv2.imshow("dist", dist)
+    cv2.waitKey(0)
 
     # This block is super fast (0.5 ms)
     _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
@@ -108,7 +111,7 @@ def postprocess(seg, dist, energy_cut, min_area):
 
     for c, contour in enumerate(contours):
 
-        # Create binary mask of contoured region
+        # Create binary mask of contoured region (NB: has to be 0 or 1, not 255!)
         mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
         cv2.drawContours(mask, [contour], -1, 1, -1)
 
@@ -125,16 +128,13 @@ def postprocess(seg, dist, energy_cut, min_area):
             assert average >= 0 and average <= 1
             scores[s] = average
         
-        instance_dict = {
-            "mask": mask,
-            "scores": scores
-        }
-        instances.append(instance_dict)
-        
-        cv2.imshow("mask", mask)
-        cv2.waitKey(0)
-
-    print(instances)
+        # Discard background and unlabelled instances
+        if np.argmax(scores) != 0 and np.argmax(scores) != 21:
+            instance_dict = {
+                "mask": mask,
+                "scores": scores
+            }
+            instances.append(instance_dict)
 
     # Return a list of instances for each image in the batch
     return instances
