@@ -21,12 +21,9 @@ import torchvision.transforms as T
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
-from datasets.voc_distance import VOCDistance
 from datasets.voc_dual_task import VOCDualTask
 
 from models.deeplabv3plus_multitask import Deeplabv3plus_multitask
-from models.sync_batchnorm import DataParallelWithCallback
-from models.sync_batchnorm.replicate import patch_replication_callback
 import transforms.transforms as myT
 from config.config import VOCSettings
 import utils.helpers as helpers
@@ -102,7 +99,7 @@ if sett.RESUME:
     pretrained_dict = torch.load(os.path.join(sett.PRETRAINED_PATH,
                         "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
     pretrained_dict = {k: v for k, v in pretrained_dict.items()
-                       if "backbone" in k}
+                       if "backbone" in k and k in current_dict}
     # Get rid of "module" in pretrained dict keywords if my model is not DataParallel
     if sett.TRAIN_GPUS == 1:
         pretrained_dict = {k[7:]: v for k, v in pretrained_dict.items()}
@@ -148,7 +145,7 @@ for epoch in range(sett.TRAIN_EPOCHS):
     train_dist_acc = 0.0
 
     # Only initialise confusion matrices when they're going to be logged
-    if epoch % sett.IMG_LOG_EPOCHS == 0:
+    if epoch % sett.IMG_LOG_EPOCHS == 0 and sett.LOG:
         train_seg_confusion = np.zeros((sett.N_CLASSES, sett.N_CLASSES), dtype="float")
         train_dist_confusion = np.zeros((sett.N_ENERGY_LEVELS, sett.N_ENERGY_LEVELS), dtype="float")
         val_seg_confusion = np.zeros((sett.N_CLASSES, sett.N_CLASSES), dtype="float")
@@ -194,7 +191,7 @@ for epoch in range(sett.TRAIN_EPOCHS):
                            .float().div(sett.DATA_RESCALE ** 2 * sett.TRAIN_BATCH_SIZE)).data
 
         # Only calculate confusion matrices every few epochs
-        if epoch % sett.IMG_LOG_EPOCHS == 0:
+        if epoch % sett.IMG_LOG_EPOCHS == 0 and sett.LOG:
 
             total_seg_labels = train_seg.cpu().flatten()
             total_seg_predictions = torch.argmax(train_predicted_seg, dim=1).cpu().flatten()
@@ -251,7 +248,7 @@ for epoch in range(sett.TRAIN_EPOCHS):
             val_dist_acc += (torch.sum(val_dist == torch.argmax(val_predicted_dist, dim=1))
                              .float().div(sett.DATA_RESCALE ** 2 * sett.TRAIN_BATCH_SIZE)).data
 
-            if epoch % sett.IMG_LOG_EPOCHS == 0:
+            if epoch % sett.IMG_LOG_EPOCHS == 0 and sett.LOG:
                 # Accumulate labels and predictions for confusion matrices
                 total_seg_labels = val_seg.cpu().flatten()
                 total_seg_predictions = torch.argmax(val_predicted_seg, dim=1).cpu().flatten()
@@ -283,85 +280,87 @@ for epoch in range(sett.TRAIN_EPOCHS):
     print("Epoch: %d/%d\ti: %d\tlr: %g\ttrain_loss: %g\tval_loss: %g\n"
           % (epoch+1, sett.TRAIN_EPOCHS, i, lr, train_loss, val_loss))
 
-    # Convert training data for plotting
-    train_input_tb = make_grid(train_inputs).cpu().numpy()
-    train_seg_tb = make_grid(helpers.colormap(train_seg.float().div(sett.N_CLASSES)
-                                        .unsqueeze(1).cpu())).numpy()
-    train_seg_prediction_tb = make_grid(helpers.colormap(torch.argmax(train_predicted_seg, dim=1)
-                                              .float().div(sett.N_CLASSES).unsqueeze(1)
-                                              .cpu())).numpy()
-    train_dist_tb = make_grid(helpers.colormap(train_dist.float().div(sett.N_ENERGY_LEVELS)
-                                        .unsqueeze(1).cpu())).numpy()
-    train_dist_prediction_tb = make_grid(helpers.colormap(torch.argmax(train_predicted_dist, dim=1)
-                                              .float().div(sett.N_ENERGY_LEVELS).unsqueeze(1)
-                                              .cpu())).numpy()                                         
 
-    # Convert val data for plotting
-    val_input_tb = make_grid(val_inputs).cpu().numpy()
-    val_seg_tb = make_grid(helpers.colormap(val_seg.float().div(sett.N_CLASSES)
-                                      .unsqueeze(1).cpu())).numpy()
-    val_seg_prediction_tb = make_grid(helpers.colormap(torch.argmax(val_predicted_seg, dim=1)
-                                            .float().div(sett.N_CLASSES).unsqueeze(1)
-                                            .cpu())).numpy()
-    val_dist_tb = make_grid(helpers.colormap(val_dist.float().div(sett.N_ENERGY_LEVELS)
-                                        .unsqueeze(1).cpu())).numpy()
-    val_dist_prediction_tb = make_grid(helpers.colormap(torch.argmax(val_predicted_dist, dim=1)
-                                              .float().div(sett.N_ENERGY_LEVELS).unsqueeze(1)
-                                              .cpu())).numpy()
-    
-    # Log scalars to tensorboardX
-    tbX_logger.add_scalars("total_losses", {"train_loss": train_loss,
-                                            "val_loss": val_loss}, epoch)
-    tbX_logger.add_scalars("seg_losses", {"train_seg_loss": train_seg_loss,
-                                          "val_seg_loss": val_seg_loss}, epoch)
-    tbX_logger.add_scalars("dist_losses", {"train_dist_loss": train_dist_loss,
-                                           "val_dist_loss": val_dist_loss}, epoch)
-    tbX_logger.add_scalars("seg_acc", {"train_seg_acc": train_seg_acc,
-                                       "val_seg_acc": val_seg_acc}, epoch)
-    tbX_logger.add_scalars("dist_acc", {"train_dist_acc": train_dist_acc,
-                                        "val_dist_acc": val_dist_acc}, epoch)                                 
-    tbX_logger.add_scalar("lr", lr, epoch)
+    if sett.LOG:
+        # Convert training data for plotting
+        train_input_tb = make_grid(train_inputs).cpu().numpy()
+        train_seg_tb = make_grid(helpers.colormap(train_seg.float().div(sett.N_CLASSES)
+                                            .unsqueeze(1).cpu())).numpy()
+        train_seg_prediction_tb = make_grid(helpers.colormap(torch.argmax(train_predicted_seg, dim=1)
+                                                    .float().div(sett.N_CLASSES).unsqueeze(1)
+                                                    .cpu())).numpy()
+        train_dist_tb = make_grid(helpers.colormap(train_dist.float().div(sett.N_ENERGY_LEVELS)
+                                            .unsqueeze(1).cpu())).numpy()
+        train_dist_prediction_tb = make_grid(helpers.colormap(torch.argmax(train_predicted_dist, dim=1)
+                                                    .float().div(sett.N_ENERGY_LEVELS).unsqueeze(1)
+                                                    .cpu())).numpy()                                         
 
-    # it seems like tensorboard doesn't like saving a lot of images,
-    # so log images only once every few epochs
-    if epoch % sett.IMG_LOG_EPOCHS == 0:
+        # Convert val data for plotting
+        val_input_tb = make_grid(val_inputs).cpu().numpy()
+        val_seg_tb = make_grid(helpers.colormap(val_seg.float().div(sett.N_CLASSES)
+                                            .unsqueeze(1).cpu())).numpy()
+        val_seg_prediction_tb = make_grid(helpers.colormap(torch.argmax(val_predicted_seg, dim=1)
+                                                .float().div(sett.N_CLASSES).unsqueeze(1)
+                                                .cpu())).numpy()
+        val_dist_tb = make_grid(helpers.colormap(val_dist.float().div(sett.N_ENERGY_LEVELS)
+                                            .unsqueeze(1).cpu())).numpy()
+        val_dist_prediction_tb = make_grid(helpers.colormap(torch.argmax(val_predicted_dist, dim=1)
+                                                    .float().div(sett.N_ENERGY_LEVELS).unsqueeze(1)
+                                                    .cpu())).numpy()
 
-        # Training images
-        tbX_logger.add_image("train_input", train_input_tb, epoch)
-        tbX_logger.add_image("train_seg", train_seg_tb, epoch)
-        tbX_logger.add_image("train_seg_prediction", train_seg_prediction_tb, epoch)
-        tbX_logger.add_image("train_dist", train_dist_tb, epoch)    
-        tbX_logger.add_image("train_dist_prediction", train_dist_prediction_tb, epoch)
-        # Validation images
-        tbX_logger.add_image("val_input", val_input_tb, epoch)
-        tbX_logger.add_image("val_seg", val_seg_tb, epoch)
-        tbX_logger.add_image("val_seg_prediction", val_seg_prediction_tb, epoch)
-        tbX_logger.add_image("val_dist", val_dist_tb, epoch)    
-        tbX_logger.add_image("val_dist_prediction", val_dist_prediction_tb, epoch)
+        # Log scalars to tensorboardX
+        tbX_logger.add_scalars("total_losses", {"train_loss": train_loss,
+                                                "val_loss": val_loss}, epoch)
+        tbX_logger.add_scalars("seg_losses", {"train_seg_loss": train_seg_loss,
+                                                "val_seg_loss": val_seg_loss}, epoch)
+        tbX_logger.add_scalars("dist_losses", {"train_dist_loss": train_dist_loss,
+                                                "val_dist_loss": val_dist_loss}, epoch)
+        tbX_logger.add_scalars("seg_acc", {"train_seg_acc": train_seg_acc,
+                                            "val_seg_acc": val_seg_acc}, epoch)
+        tbX_logger.add_scalars("dist_acc", {"train_dist_acc": train_dist_acc,
+                                            "val_dist_acc": val_dist_acc}, epoch)                                 
+        tbX_logger.add_scalar("lr", lr, epoch)
 
-        # Divide unnormalised matrices
-        train_seg_confusion /= len(loader_train)
-        train_dist_confusion /= len(loader_train)
-        val_seg_confusion /= len(loader_val)
-        val_dist_confusion /= len(loader_val)
+        # it seems like tensorboard doesn't like saving a lot of images,
+        # so log images only once every few epochs
+        if epoch % sett.IMG_LOG_EPOCHS == 0:
 
-        # Normalise confusion matrices
-        train_seg_confusion_n = helpers.normalise_confusion_mat(train_seg_confusion)
-        train_dist_confusion_n = helpers.normalise_confusion_mat(train_dist_confusion)
-        val_seg_confusion_n = helpers.normalise_confusion_mat(val_seg_confusion)
-        val_dist_confusion_n = helpers.normalise_confusion_mat(val_dist_confusion)
+            # Training images
+            tbX_logger.add_image("train_input", train_input_tb, epoch)
+            tbX_logger.add_image("train_seg", train_seg_tb, epoch)
+            tbX_logger.add_image("train_seg_prediction", train_seg_prediction_tb, epoch)
+            tbX_logger.add_image("train_dist", train_dist_tb, epoch)    
+            tbX_logger.add_image("train_dist_prediction", train_dist_prediction_tb, epoch)
+            # Validation images
+            tbX_logger.add_image("val_input", val_input_tb, epoch)
+            tbX_logger.add_image("val_seg", val_seg_tb, epoch)
+            tbX_logger.add_image("val_seg_prediction", val_seg_prediction_tb, epoch)
+            tbX_logger.add_image("val_dist", val_dist_tb, epoch)    
+            tbX_logger.add_image("val_dist_prediction", val_dist_prediction_tb, epoch)
 
-        # Log confusion matrices to tensorboard
-        helpers.log_confusion_mat(tbX_logger, train_seg_confusion, (16,10), "train_confusion_seg", "0.0f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
-        helpers.log_confusion_mat(tbX_logger, train_dist_confusion, (9,7), "train_confusion_dist", "0.0f", epoch, "auto", "auto")
-        helpers.log_confusion_mat(tbX_logger, val_seg_confusion, (16,10), "val_confusion_seg", "0.0f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
-        helpers.log_confusion_mat(tbX_logger, val_dist_confusion, (9,7), "val_confusion_dist", "0.0f", epoch, "auto", "auto")
+            # Divide unnormalised matrices
+            train_seg_confusion /= len(loader_train)
+            train_dist_confusion /= len(loader_train)
+            val_seg_confusion /= len(loader_val)
+            val_dist_confusion /= len(loader_val)
 
-        # Log normalised confusion matrices to tensorboard
-        helpers.log_confusion_mat(tbX_logger, train_seg_confusion_n, (16,10), "train_confusion_seg_n", "0.3f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
-        helpers.log_confusion_mat(tbX_logger, train_dist_confusion_n, (9,7), "train_confusion_dist_n", "0.3f", epoch, "auto", "auto")
-        helpers.log_confusion_mat(tbX_logger, val_seg_confusion_n, (16,10), "val_confusion_seg_n", "0.3f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
-        helpers.log_confusion_mat(tbX_logger, val_dist_confusion_n, (9,7), "val_confusion_dist_n", "0.3f", epoch, "auto", "auto")        
+            # Normalise confusion matrices
+            train_seg_confusion_n = helpers.normalise_confusion_mat(train_seg_confusion)
+            train_dist_confusion_n = helpers.normalise_confusion_mat(train_dist_confusion)
+            val_seg_confusion_n = helpers.normalise_confusion_mat(val_seg_confusion)
+            val_dist_confusion_n = helpers.normalise_confusion_mat(val_dist_confusion)
+
+            # Log confusion matrices to tensorboard
+            helpers.log_confusion_mat(tbX_logger, train_seg_confusion, (16,10), "train_confusion_seg", "0.0f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+            helpers.log_confusion_mat(tbX_logger, train_dist_confusion, (9,7), "train_confusion_dist", "0.0f", epoch, "auto", "auto")
+            helpers.log_confusion_mat(tbX_logger, val_seg_confusion, (16,10), "val_confusion_seg", "0.0f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+            helpers.log_confusion_mat(tbX_logger, val_dist_confusion, (9,7), "val_confusion_dist", "0.0f", epoch, "auto", "auto")
+
+            # Log normalised confusion matrices to tensorboard
+            helpers.log_confusion_mat(tbX_logger, train_seg_confusion_n, (16,10), "train_confusion_seg_n", "0.3f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+            helpers.log_confusion_mat(tbX_logger, train_dist_confusion_n, (9,7), "train_confusion_dist_n", "0.3f", epoch, "auto", "auto")
+            helpers.log_confusion_mat(tbX_logger, val_seg_confusion_n, (16,10), "val_confusion_seg_n", "0.3f", epoch, list(sett.CLASSES.values()), list(sett.CLASSES.values()))
+            helpers.log_confusion_mat(tbX_logger, val_dist_confusion_n, (9,7), "val_confusion_dist_n", "0.3f", epoch, "auto", "auto")        
 
 
     # Save checkpoint
@@ -371,7 +370,8 @@ for epoch in range(sett.TRAIN_EPOCHS):
         torch.save(model.state_dict(), save_path)
         print("%s has been saved." %save_path)
 
-tbX_logger.close()
+if sett.LOG:
+    tbX_logger.close()
 
 # Save final trained model
 save_path = os.path.join(sett.PRETRAINED_PATH, "%s_%s_%s_epoch%d_final.pth"
