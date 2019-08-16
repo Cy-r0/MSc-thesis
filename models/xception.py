@@ -7,40 +7,49 @@ Francois Chollet
 Xception: Deep Learning with Depthwise Separable Convolutions
 https://arxiv.org/pdf/1610.02357.pdf
 This weights ported from the Keras implementation. Achieves the following performance on the validation set:
-Loss:0.9173 Prec@1:78.892 Prec@5:94.292
+Loutput_strides:0.9173 Prec@1:78.892 Prec@5:94.292
 REMEMBER to set your image size to 3x299x299 for both test and validation
 normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5],
                                   std=[0.5, 0.5, 0.5])
 The resize parameter of the validation transform should be 333, and make sure to center crop at 299x299
+
+Modified by Ciro Cursio on 16 Aug 2019
 """
+
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 from torch.nn import init
-# from models.sync_batchnorm import nn.SynchronizedBatchNorm2d
 
-bn_mom = 0.0003
-__all__ = ['xception']
-
-model_urls = {
-    'xception': '/home/cyrus/Documents/deeplabv3plus-pytorch/model/deeplabv3+voc/deeplabv3plus_xception_VOC2012_epoch46_all.pth'
-                                        #'http://data.lip6.fr/cadene/pretrainedmodels/xception-b5690688.pth'
-}
 
 class SeparableConv2d(nn.Module):
-    def __init__(self,in_channels,out_channels,kernel_size=1,stride=1,padding=0,dilation=1,bias=False,activate_first=True,inplace=True):
-        super(SeparableConv2d,self).__init__()
+
+    def __init__(self,
+        in_channels,
+        out_channels,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        dilation=1,
+        bias=False,
+        activate_first=True,
+        inplace=True,
+        bn_mom=0.1):
+
+        super(SeparableConv2d, self).__init__()
         self.relu0 = nn.ReLU(inplace=inplace)
-        self.depthwise = nn.Conv2d(in_channels,in_channels,kernel_size,stride,padding,dilation,groups=in_channels,bias=bias)
+        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, 
+            stride, padding, dilation, groups=in_channels, bias=bias)
         self.bn1 = nn.BatchNorm2d(in_channels, momentum=bn_mom)
         self.relu1 = nn.ReLU(inplace=True)
-        self.pointwise = nn.Conv2d(in_channels,out_channels,1,1,0,1,1,bias=bias)
+        self.pointwise = nn.Conv2d(in_channels, out_channels, 1, 1, 0, 1, 1, bias=bias)
         self.bn2 = nn.BatchNorm2d(out_channels, momentum=bn_mom)
         self.relu2 = nn.ReLU(inplace=True)
         self.activate_first = activate_first
-    def forward(self,x):
+
+    def forward(self, x):
         if self.activate_first:
             x = self.relu0(x)
         x = self.depthwise(x)
@@ -55,7 +64,17 @@ class SeparableConv2d(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self,in_filters,out_filters,strides=1,atrous=None,grow_first=True,activate_first=True,inplace=True):
+
+    def __init__(self,
+        in_filters,
+        out_filters,
+        strides=1,
+        atrous=None,
+        grow_first=True,
+        activate_first=True,
+        inplace=True,
+        bn_mom=0.1):
+
         super(Block, self).__init__()
         if atrous == None:
             atrous = [1]*3
@@ -65,7 +84,8 @@ class Block(nn.Module):
         idx = 0
         self.head_relu = True
         if out_filters != in_filters or strides!=1:
-            self.skip = nn.Conv2d(in_filters,out_filters,1,stride=strides, bias=False)
+            self.skip = nn.Conv2d(in_filters, out_filters, 1,
+                stride=strides, bias=False)
             self.skipbn = nn.BatchNorm2d(out_filters, momentum=bn_mom)
             self.head_relu = False
         else:
@@ -76,11 +96,17 @@ class Block(nn.Module):
             filters = out_filters
         else:
             filters = in_filters
-        self.sepconv1 = SeparableConv2d(in_filters,filters,3,stride=1,padding=1*atrous[0],dilation=atrous[0],bias=False,activate_first=activate_first,inplace=self.head_relu)
-        self.sepconv2 = SeparableConv2d(filters,out_filters,3,stride=1,padding=1*atrous[1],dilation=atrous[1],bias=False,activate_first=activate_first)
-        self.sepconv3 = SeparableConv2d(out_filters,out_filters,3,stride=strides,padding=1*atrous[2],dilation=atrous[2],bias=False,activate_first=activate_first,inplace=inplace)
+        self.sepconv1 = SeparableConv2d(in_filters, filters, 3, stride=1, 
+            padding=1*atrous[0], dilation=atrous[0], bias=False, 
+            activate_first=activate_first, inplace=self.head_relu)
+        self.sepconv2 = SeparableConv2d(filters, out_filters, 3, stride=1,
+            padding=1*atrous[1], dilation=atrous[1], bias=False,
+            activate_first=activate_first)
+        self.sepconv3 = SeparableConv2d(out_filters, out_filters, 3, 
+            stride=strides, padding=1*atrous[2], dilation=atrous[2],
+            bias=False, activate_first=activate_first, inplace=inplace)
 
-    def forward(self,inp):
+    def forward(self, inp):
         
         if self.skip is not None:
             skip = self.skip(inp)
@@ -93,7 +119,7 @@ class Block(nn.Module):
         self.hook_layer = x
         x = self.sepconv3(x)
 
-        x+=skip
+        x += skip
         return x
 
 
@@ -102,7 +128,7 @@ class Xception(nn.Module):
     Xception optimized for the ImageNet dataset, as specified in
     https://arxiv.org/pdf/1610.02357.pdf
     """
-    def __init__(self, os):
+    def __init__(self, output_stride, bn_momentum=0.1):
         """ Constructor
         Args:
             num_classes: number of classes
@@ -110,56 +136,58 @@ class Xception(nn.Module):
         super(Xception, self).__init__()
 
         stride_list = None
-        if os == 8:
-            stride_list = [2,1,1]
-        elif os == 16:
-            stride_list = [2,2,1]
+        if output_stride == 8:
+            stride_list = [2, 1, 1]
+        elif output_stride == 16:
+            stride_list = [2, 2, 1]
         else:
-            raise ValueError('xception.py: output stride=%d is not supported.'%os) 
+            raise ValueError('xception.py: output stride=%d is not supported.'%output_stride) 
         self.conv1 = nn.Conv2d(3, 32, 3, 2, 1, bias=False)
-        self.bn1 = nn.BatchNorm2d(32, momentum=bn_mom)
+        self.bn1 = nn.BatchNorm2d(32, momentum=bn_momentum, affine=True)
         self.relu = nn.ReLU(inplace=True)
         
-        self.conv2 = nn.Conv2d(32,64,3,1,1,bias=False)
-        self.bn2 = nn.BatchNorm2d(64, momentum=bn_mom)
-        #do relu here
+        self.conv2 = nn.Conv2d(32, 64, 3, 1, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(64, momentum=bn_momentum, affine=True)
 
-        self.block1=Block(64,128,2)
-        self.block2=Block(128,256,stride_list[0],inplace=False)
-        self.block3=Block(256,728,stride_list[1])
+        self.block1=Block(64 ,128, 2)
+        self.block2 = Block(128, 256, stride_list[0], inplace=False)
+        self.block3 = Block(256, 728, stride_list[1])
 
-        rate = 16//os
-        self.block4=Block(728,728,1,atrous=rate)
-        self.block5=Block(728,728,1,atrous=rate)
-        self.block6=Block(728,728,1,atrous=rate)
-        self.block7=Block(728,728,1,atrous=rate)
+        rate = 16 // output_stride
+        self.block4 = Block(728, 728, 1, atrous=rate)
+        self.block5 = Block(728, 728, 1, atrous=rate)
+        self.block6 = Block(728, 728, 1, atrous=rate)
+        self.block7 = Block(728, 728, 1, atrous=rate)
 
-        self.block8=Block(728,728,1,atrous=rate)
-        self.block9=Block(728,728,1,atrous=rate)
-        self.block10=Block(728,728,1,atrous=rate)
-        self.block11=Block(728,728,1,atrous=rate)
+        self.block8 = Block(728, 728, 1, atrous=rate)
+        self.block9 = Block(728, 728, 1, atrous=rate)
+        self.block10 = Block(728, 728, 1, atrous=rate)
+        self.block11 = Block(728, 728, 1, atrous=rate)
 
-        self.block12=Block(728,728,1,atrous=rate)
-        self.block13=Block(728,728,1,atrous=rate)
-        self.block14=Block(728,728,1,atrous=rate)
-        self.block15=Block(728,728,1,atrous=rate)
+        self.block12 = Block(728, 728, 1, atrous=rate)
+        self.block13 = Block(728, 728, 1, atrous=rate)
+        self.block14 = Block(728, 728, 1, atrous=rate)
+        self.block15 = Block(728, 728, 1, atrous=rate)
 
-        self.block16=Block(728,728,1,atrous=[1*rate,1*rate,1*rate])
-        self.block17=Block(728,728,1,atrous=[1*rate,1*rate,1*rate])
-        self.block18=Block(728,728,1,atrous=[1*rate,1*rate,1*rate])
-        self.block19=Block(728,728,1,atrous=[1*rate,1*rate,1*rate])
+        self.block16 = Block(728, 728, 1, atrous=[1*rate, 1*rate, 1*rate])
+        self.block17 = Block(728, 728, 1, atrous=[1*rate, 1*rate, 1*rate])
+        self.block18 = Block(728, 728, 1, atrous=[1*rate, 1*rate, 1*rate])
+        self.block19 = Block(728, 728, 1, atrous=[1*rate, 1*rate, 1*rate])
         
-        self.block20=Block(728,1024,stride_list[2],atrous=rate,grow_first=False)
+        self.block20=Block(728, 1024, stride_list[2], atrous=rate, grow_first=False)
         #self.block12=Block(728,1024,2,2,start_with_relu=True,grow_first=False)
 
-        self.conv3 = SeparableConv2d(1024,1536,3,1,1*rate,dilation=rate,activate_first=False)
+        self.conv3 = SeparableConv2d(1024, 1536, 3, 1, 1*rate, dilation=rate,
+            activate_first=False)
         # self.bn3 = nn.BatchNorm2d(1536, momentum=bn_mom)
 
-        self.conv4 = SeparableConv2d(1536,1536,3,1,1*rate,dilation=rate,activate_first=False)
+        self.conv4 = SeparableConv2d(1536,1536, 3, 1, 1*rate, dilation=rate,
+            activate_first=False)
         # self.bn4 = nn.BatchNorm2d(1536, momentum=bn_mom)
 
         #do relu here
-        self.conv5 = SeparableConv2d(1536,2048,3,1,1*rate,dilation=rate,activate_first=False)
+        self.conv5 = SeparableConv2d(1536, 2048, 3, 1, 1*rate, dilation=rate,
+            activate_first=False)
         # self.bn5 = nn.BatchNorm2d(2048, momentum=bn_mom)
         self.layers = []
 
@@ -226,19 +254,3 @@ class Xception(nn.Module):
 
     def get_layers(self):
         return self.layers
-
-def xception(pretrained=True, os=16):
-    model = Xception(os=os)
-    if pretrained:
-        old_dict = torch.load(model_urls['xception'])
-        # old_dict = model_zoo.load_url(model_urls['xception'])
-        # for name, weights in old_dict.items():
-        #     if 'pointwise' in name:
-        #         old_dict[name] = weights.unsqueeze(-1).unsqueeze(-1)
-        model_dict = model.state_dict()
-        old_dict = {k: v for k,v in old_dict.items() if ('itr' not in k and 'tmp' not in k and 'track' not in k)}
-        model_dict.update(old_dict)
-        
-        model.load_state_dict(model_dict) 
-
-    return model
