@@ -13,6 +13,7 @@ from sklearn.metrics import confusion_matrix
 from tensorboardX import SummaryWriter
 import timeit
 import torch
+import torch.distributed as distr
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
 import torch.optim as optim
@@ -25,11 +26,11 @@ from datasets.voc_dual_task import VOCDualTask
 
 from models.deeplabv3plus_multitask import Deeplabv3plus_multitask
 import transforms.transforms as myT
-from config.config import VOCSettings
+from config.config import VOCConfig
 import utils.helpers as helpers
 
 
-sett = VOCSettings()
+sett = VOCConfig()
 
 
 #os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -51,24 +52,24 @@ transform = T.Compose([myT.Quantise(level_widths=sett.LEVEL_WIDTHS),
 
 # Dataset setup
 VOCW_train = VOCDualTask(sett.DSET_ROOT,
-                         image_set="train_reduced",
+                         image_set="train",
                          transform=transform)
 VOCW_val = VOCDualTask(sett.DSET_ROOT,
-                       image_set="val_reduced",
+                       image_set="val",
                        transform=transform)
 
 loader_train = DataLoader(VOCW_train,
                           batch_size = sett.TRAIN_BATCH_SIZE,
-                          sampler=sampler.SubsetRandomSampler(
-                              range(int(len(VOCW_train) * (1 - sett.VAL_FRACTION)))),
+                          #sampler=sampler.SubsetRandomSampler(
+                          #    range(int(len(VOCW_train) * (1 - sett.VAL_FRACTION)))),
                           num_workers = sett.DATALOADER_JOBS,
                           pin_memory = True,
                           drop_last=True)
 loader_val = DataLoader(VOCW_train,
                         batch_size = sett.VAL_BATCH_SIZE,
-                        sampler=sampler.SubsetRandomSampler(
-                            range(int(len(VOCW_train) * (1 - sett.VAL_FRACTION)),
-                                  len(VOCW_train))),
+                        #sampler=sampler.SubsetRandomSampler(
+                        #    range(int(len(VOCW_train) * (1 - sett.VAL_FRACTION)),
+                        #          len(VOCW_train))),
                         num_workers = sett.DATALOADER_JOBS,
                         pin_memory = True,
                         drop_last=True)
