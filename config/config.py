@@ -7,11 +7,15 @@ class VOCConfig(object):
 
     def __init__(self):
 
-        self.LOG = False
+        # LOG SETTINGS
+
+        self.LOG = True
         self.LOG_PATH = "logs"
 
-        # Model settings
-        self.RESUME = True
+
+        # MODEL SETTINGS
+
+        self.USE_PRETRAINED = True
         self.PRETRAINED_PATH = "models/pretrained"
         self.TRAINED_PATH = "models/pretrained"
         self.MODEL_NAME = "deeplabv3plus_multitask"
@@ -19,13 +23,10 @@ class VOCConfig(object):
         self.DATA_NAME = "VOC2012"
 
 
-        # Dataset settings
+        # DATASET SETTINGS
+
         self.DSET_ROOT = "/home/cyrus/Datasets"  
         self.DATALOADER_JOBS = 8
-
-        self.DATA_RESCALE = 512
-        self.DATA_RANDOMCROP = 512
-
         self.CLASSES = {
             0: "background",
             1: "aeroplane",
@@ -51,15 +52,27 @@ class VOCConfig(object):
             255: "unlabelled"
         }
         self.N_CLASSES = len(self.CLASSES)
-
         self.LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
         self.N_ENERGY_LEVELS = len(self.LEVEL_WIDTHS) + 1
 
 
-        # Training settings
+        # DATA AUGMENTATION SETTINGS
+
+        self.DATA_RESCALE = 512
+        self.RESIZEDCROP_SCALE_RANGE = (0.5, 1.)
+        # The colour parameters below are maximum deviations allowed from
+        # the original image colour
+        self.BRIGHTNESS = 0.5
+        self.CONTRAST = 0.3
+        self.SATURATION = 0.5
+        self.HUE = 0.1
+
+
+        # TRAINING SETTINGS
+
         self.TRAIN_GPUS = 2
         # IMPORTANT! If you use DistributedDataParallel,
-        # this is the batch size contained in each GPU
+        # TRAIN_BATCH_SIZE is the batch size contained in each GPU
         # so the total batch size will be BATCH_SIZE * GPUS
         self.TRAIN_BATCH_SIZE = 4
         self.TRAIN_EPOCHS = 45
@@ -72,10 +85,13 @@ class VOCConfig(object):
         self.IMG_LOG_EPOCHS = 10
 
 
-        # Validation settings
+        # VALIDATION SETTINGS
+
         self.VAL_FRACTION = 0.5
         self.VAL_BATCH_SIZE = self.TRAIN_BATCH_SIZE
 
-        # Test settings
+
+        # TEST SETTINGS
+
         self.TEST_GPUS = 1
         self.TEST_BATCH_SIZE = 1

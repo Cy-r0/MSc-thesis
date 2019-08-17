@@ -2,6 +2,7 @@ from datetime import datetime
 from itertools import chain
 import os
 from pprint import pprint
+import random
 from timeit import default_timer
 
 import cv2
@@ -38,6 +39,95 @@ cfg = VOCConfig()
 #os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
+def setup_dataloaders(rank):
+    """
+    Initialise datasets, samplers and return dataloaders.
+    """
+
+    # Dataset transforms
+    transform = T.Compose([
+        myT.Quantise(level_widths=cfg.LEVEL_WIDTHS),
+        myT.Resize(cfg.DATA_RESCALE),
+        myT.RandomResizedCrop(cfg.RESIZEDCROP_SCALE_RANGE, cfg.DATA_RESCALE),
+        myT.RandomHorizontalFlip(),
+        myT.ColourJitter(cfg.BRIGHTNESS, cfg.CONTRAST, cfg.SATURATION, cfg.HUE),
+        myT.ToTensor()])
+
+    # Datasets
+    VOC_train = VOCDualTask(
+        cfg.DSET_ROOT,
+        image_set="train",
+        transform=transform)
+    VOC_val = VOCDualTask(
+        cfg.DSET_ROOT,
+        image_set="val",
+        transform=transform)
+    
+    # Distributed samplers
+    sampler_train = DistributedSampler(
+        VOC_train,
+        num_replicas=cfg.TRAIN_GPUS,
+        rank=rank)
+    sampler_val = DistributedSampler(
+        VOC_val,
+        num_replicas=cfg.TRAIN_GPUS,
+        rank=rank)
+
+    # Data loaders
+    loader_train = DataLoader(
+        VOC_train,
+        batch_size=cfg.TRAIN_BATCH_SIZE,
+        sampler=sampler_train,
+        num_workers=cfg.DATALOADER_JOBS,
+        pin_memory=True,
+        drop_last=True)
+    loader_val = DataLoader(
+        VOC_val,
+        batch_size=cfg.VAL_BATCH_SIZE,
+        sampler=sampler_val,
+        num_workers=cfg.DATALOADER_JOBS,
+        pin_memory=True,
+        drop_last=True)
+    
+    return loader_train, loader_val
+
+
+def setup_model(rank):
+    """
+    Initialise model and load weights.
+    """
+    
+    # Initialise model
+    model = Deeplabv3plus_multitask(
+        seg_classes=cfg.N_CLASSES,
+        dist_classes=cfg.N_ENERGY_LEVELS)
+    # Convert batchnorm to synchronised batchnorm
+    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model.to(rank)
+    if rank == 0:
+        print(
+            "GPUs found:", torch.cuda.device_count(),
+            "\tGPUs used by all processes:", cfg.TRAIN_GPUS)
+    # Wrap in distributed dataparallel
+    model = DistributedDataParallel(model, device_ids=[rank], output_device=rank)
+
+    # Load pretrained model weights only for backbone network
+    if cfg.USE_PRETRAINED:
+        current_dict = model.state_dict()
+        pretrained_dict = torch.load(
+            os.path.join(
+                cfg.PRETRAINED_PATH,
+                "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
+        pretrained_dict = {
+            k: v for k, v in pretrained_dict.items()
+            if "backbone" in k and k in current_dict
+        }
+        current_dict.update(pretrained_dict)
+        model.load_state_dict(current_dict)
+    
+    return model
+
+
 def log_all_confusion_mat(
     logger,
     train_seg,
@@ -60,15 +150,17 @@ def log_all_confusion_mat(
     """
 
     postfix = ""
+    fmt = "0.0f"
     if isnormalised:
         postfix = "_n"
+        fmt = "0.3f"
 
     helpers.log_confusion_mat(
         logger,
         train_seg,
         (16,10),
         "train_confusion_seg" + postfix,
-        "0.3f",
+        fmt,
         epoch,
         list(cfg.CLASSES.values()),
         list(cfg.CLASSES.values()))
@@ -77,7 +169,7 @@ def log_all_confusion_mat(
         train_dist,
         (9,7),
         "train_confusion_dist" + postfix,
-        "0.3f",
+        fmt,
         epoch,
         "auto",
         "auto")
@@ -86,7 +178,7 @@ def log_all_confusion_mat(
         val_seg,
         (16,10),
         "val_confusion_seg" + postfix,
-        "0.3f",
+        fmt,
         epoch,
         list(cfg.CLASSES.values()),
         list(cfg.CLASSES.values()))
@@ -95,7 +187,7 @@ def log_all_confusion_mat(
         val_dist,
         (9,7),
         "val_confusion_dist" + postfix,
-        "0.3f",
+        fmt,
         epoch,
         "auto",
         "auto")
@@ -122,53 +214,15 @@ def train(rank, world_size):
     torch.cuda.set_device(rank)
 
     # Fix all seeds for reproducibility
-    np.random.seed(777)
-    torch.manual_seed(777)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    seed = 777
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    #torch.backends.cudnn.deterministic = True
+    #torch.backends.cudnn.benchmark = False
 
-    # Dataset transforms
-    transform = T.Compose([
-        myT.Quantise(level_widths=cfg.LEVEL_WIDTHS),
-        myT.Resize(cfg.DATA_RESCALE),
-        myT.RandomCrop(cfg.DATA_RANDOMCROP),
-        myT.ToTensor()])
-
-    # Datasets
-    VOC_train = VOCDualTask(
-        cfg.DSET_ROOT,
-        image_set="train",
-        transform=transform)
-    VOC_val = VOCDualTask(
-        cfg.DSET_ROOT,
-        image_set="val",
-        transform=transform)
-    
-    # Distributed samplers
-    sampler_train = DistributedSampler(
-        VOC_train,
-        num_replicas=cfg.TRAIN_GPUS,
-        rank=rank)
-    sampler_val = DistributedSampler(
-        VOC_val,
-        num_replicas=cfg.TRAIN_GPUS,
-        rank=rank)
-
-    # Data loaders
-    loader_train = DataLoader(
-        VOC_train,
-        batch_size = cfg.TRAIN_BATCH_SIZE,
-        sampler=sampler_train,
-        num_workers = cfg.DATALOADER_JOBS,
-        pin_memory = True,
-        drop_last=True)
-    loader_val = DataLoader(
-        VOC_val,
-        batch_size = cfg.VAL_BATCH_SIZE,
-        sampler=sampler_val,
-        num_workers = cfg.DATALOADER_JOBS,
-        pin_memory = True,
-        drop_last=True)
+    # Dataloaders
+    loader_train, loader_val = setup_dataloaders(rank)
 
     # Initialise tensorboardX logger only in process 0
     if cfg.LOG and rank == 0:
@@ -177,30 +231,7 @@ def train(rank, world_size):
             os.path.join(cfg.LOG_PATH, now.strftime("%Y%m%d-%H%M")))
 
     # Model setup
-    model = Deeplabv3plus_multitask(
-        seg_classes=cfg.N_CLASSES,
-        dist_classes=cfg.N_ENERGY_LEVELS)
-    model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model.to(rank)
-    if rank == 0:
-        print(
-            "GPUs found:", torch.cuda.device_count(),
-            "\tGPUs used by all processes:", cfg.TRAIN_GPUS)
-    model = DistributedDataParallel(model, device_ids=[rank], output_device=rank)
-
-    # Load pretrained model weights only for backbone network
-    if cfg.RESUME:
-        current_dict = model.state_dict()
-        pretrained_dict = torch.load(
-            os.path.join(
-                cfg.PRETRAINED_PATH,
-                "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
-        pretrained_dict = {
-            k: v for k, v in pretrained_dict.items()
-            if "backbone" in k and k in current_dict
-        }
-        current_dict.update(pretrained_dict)
-        model.load_state_dict(current_dict)
+    model = setup_model(rank)
 
     # Set losses (first one for semantics, second one for watershed)
     seg_criterion = nn.CrossEntropyLoss(ignore_index=255)
@@ -236,7 +267,7 @@ def train(rank, world_size):
 
         # Only initialise confusion matrices when they're going to be logged
         # Also, only log from process 0
-        if epoch % cfg.IMG_LOG_EPOCHS == 0 and cfg.LOG and rank == 0:
+        if epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG and rank == 0:
             train_seg_confusion = np.zeros(
                 (cfg.N_CLASSES, cfg.N_CLASSES),
                 dtype="float")
@@ -301,7 +332,7 @@ def train(rank, world_size):
                     .float().div(batch_pixels)
 
                 # Only calculate confusion matrices every few epochs
-                if epoch % cfg.IMG_LOG_EPOCHS == 0 and cfg.LOG:
+                if epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
 
                     # Flatten labels and predictions and append
                     total_seg_labels = train_seg.cpu().flatten()
@@ -356,7 +387,6 @@ def train(rank, world_size):
                     val_dist_loss += dist_loss.item()
 
                     # Calculate accuracies
-                    # TODO MODIFY HERE
                     batch_pixels = cfg.DATA_RESCALE ** 2 * cfg.VAL_BATCH_SIZE
                     seg_argmax = torch.argmax(val_predicted_seg, dim=1)
                     dist_argmax = torch.argmax(val_predicted_dist, dim=1)
@@ -365,7 +395,7 @@ def train(rank, world_size):
                     val_dist_acc += torch.sum(val_dist == dist_argmax) \
                         .float().div(batch_pixels)
 
-                    if epoch % cfg.IMG_LOG_EPOCHS == 0 and cfg.LOG:
+                    if epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
                         # Flatten labels and predictions and append
                         total_seg_labels = val_seg.cpu().flatten()
                         total_seg_predictions = seg_argmax.cpu().flatten()
@@ -380,7 +410,7 @@ def train(rank, world_size):
                             labels=list(cfg.CLASSES.keys())
                             ) / cfg.VAL_BATCH_SIZE
 
-                        train_dist_confusion += confusion_matrix(
+                        val_dist_confusion += confusion_matrix(
                             total_dist_labels,
                             total_dist_predictions,
                             labels=list(range(cfg.N_ENERGY_LEVELS))
@@ -388,14 +418,14 @@ def train(rank, world_size):
 
         # Only print info and log to tensorboard in process 0
         if rank == 0:
-            # Average losses on all batches
+            # Average training losses and acc on all batches
             train_loss /= len(loader_train)
             train_seg_loss /= len(loader_train)
             train_dist_loss /= len(loader_train)
             train_seg_acc /= len(loader_train)
             train_dist_acc /= len(loader_train)
 
-            # Average accuracies on batches
+            # Average validation losses and acc on batches
             val_loss /= len(loader_val)
             val_seg_loss /= len(loader_val)
             val_dist_loss /= len(loader_val)
@@ -409,36 +439,28 @@ def train(rank, world_size):
                 # Convert training data for plotting
                 train_input_tb = make_grid(train_inputs).cpu().numpy()
                 train_seg_tb = make_grid(helpers.colormap(
-                    train_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu()
-                    )).numpy()
+                    train_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
                 train_seg_prediction_tb = make_grid(helpers.colormap(
                     torch.argmax(train_predicted_seg, dim=1).float() \
-                    .div(cfg.N_CLASSES).unsqueeze(1).cpu()
-                    )).numpy()
+                    .div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
                 train_dist_tb = make_grid(helpers.colormap(
-                    train_dist.float().div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu()
-                    )).numpy()
+                    train_dist.float().div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
                 train_dist_prediction_tb = make_grid(helpers.colormap(
                     torch.argmax(train_predicted_dist, dim=1).float() \
-                    .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu()
-                    )).numpy()                                         
+                    .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()                                         
 
                 # Convert val data for plotting
                 val_input_tb = make_grid(val_inputs).cpu().numpy()
                 val_seg_tb = make_grid(helpers.colormap(
-                    val_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu()
-                    )).numpy()
+                    val_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
                 val_seg_prediction_tb = make_grid(helpers.colormap(
                     torch.argmax(val_predicted_seg, dim=1).float() \
-                    .div(cfg.N_CLASSES).unsqueeze(1).cpu()
-                    )).numpy()
+                    .div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
                 val_dist_tb = make_grid(helpers.colormap(
-                    val_dist.float().div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu()
-                    )).numpy()
+                    val_dist.float().div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
                 val_dist_prediction_tb = make_grid(helpers.colormap(
                     torch.argmax(val_predicted_dist, dim=1).float() \
-                    .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu()
-                    )).numpy()
+                    .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
 
                 # Log scalars to tensorboardX
                 tbX_logger.add_scalars(
@@ -479,8 +501,8 @@ def train(rank, world_size):
                 tbX_logger.add_scalar("lr", lr, epoch)
 
                 # it seems like tensorboard doesn't like saving a lot of images,
-                # so log images only once every few epochs
-                if epoch % cfg.IMG_LOG_EPOCHS == 0:
+                # so log images only at last epoch
+                if epoch == cfg.TRAIN_EPOCHS - 1:
 
                     # Training images
                     tbX_logger.add_image("train_input", train_input_tb, epoch)
