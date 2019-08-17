@@ -3,12 +3,35 @@ These transforms apply the exact same operation (even random transforms) to both
 the input image and the targets (only accepts two targets at a time).
 """
 
-from collections.abc import Iterable as Iterable
 import numbers
+import random
 
 from PIL import Image
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
+
+
+class ColourJitter(object):
+    """
+    Randomly change brightness, contrast, saturation and hue of input image only.
+    """
+
+    def __init__(self, brightness, contrast, saturation, hue):
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
+
+    def __call__(self, sample):
+        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        
+        img = T.ColorJitter(
+            self.brightness,
+            self.contrast,
+            self.saturation,
+            self.hue)(img)
+
+        return {"image": img, "seg": seg, "dist": dist}
 
 
 class Normalise(object):
@@ -26,9 +49,7 @@ class Normalise(object):
         self.inplace = inplace
     
     def __call__(self, sample):
-
         img, seg, dist = sample["image"], sample["seg"], sample["dist"]
-
         img = F.normalize(img, self.mean, self.std, self.inplace)
 
         return {"image": img, "seg": seg, "dist": dist}
@@ -46,49 +67,66 @@ class Quantise(object):
     """
 
     def __init__(self, level_widths):
-
         assert sum(level_widths) < 256
-
         self.lookup_table = [len(level_widths)] * 256
         acc = 0
 
+        # Generate lookup table for quantisation
         for i in range(len(level_widths)):
-
             self.lookup_table[acc : acc + level_widths[i]] = [i] * level_widths[i]
             acc += level_widths[i]
 
     def __call__(self, sample):
-
         img, seg, dist = sample["image"], sample["seg"], sample["dist"]
-        
         dist = dist.point(self.lookup_table)
 
         return {"image": img, "seg": seg, "dist": dist}
 
 
-class RandomCrop(object):
+class RandomHorizontalFlip(object):
     """
-    Randomly crop both image and targets.
+    Randomly flip image and targets horizontally (left-right).
 
     Args:
-        - size (sequence or int): size of output image.
+        - p (int): probability of flipping image.
     """
-
-    def __init__(self, size):
-        if isinstance(size, numbers.Number):
-            self.size = (int(size), int(size))
-        else:
-            self.size = size
+    def __init__(self, p=0.5):
+        self.p = p
     
     def __call__(self, sample):
-
         img, seg, dist = sample["image"], sample["seg"], sample["dist"]
 
-        i, j, h, w = T.RandomCrop.get_params(img, output_size=self.size)
+        if random.random() > self.p:
+            img = F.hflip(img)
+            seg = F.hflip(seg)
+            dist = F.hflip(dist)
 
-        img = F.crop(img, i, j, h, w)
-        seg = F.crop(seg, i, j, h, w)
-        dist = F.crop(dist, i, j, h, w)
+        return {"image": img, "seg": seg, "dist": dist}
+
+
+class RandomResizedCrop(object):
+    """
+    Randomly crop both image and targets and rescale output figure
+    to desired size. NB: ratio is always 1, so all images will be square.
+
+    Args:
+        - scale (tuple): range of scale factors to apply
+            (only the extremes need be included in the tuple).
+        - size (int or tuple): output size in pixels.
+        - ratio (tuple): range of aspect ratios of the cropped regions.
+    """
+    def __init__(self, scale, size, ratio=(1., 1.)):
+        self.scale = scale
+        self.size = size
+        self.ratio = ratio
+    
+    def __call__(self, sample):
+        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        i, j, h, w = T.RandomResizedCrop.get_params(img, self.scale, self.ratio)
+
+        img = F.resized_crop(img, i, j, h, w, self.size, Image.BILINEAR)
+        seg = F.resized_crop(seg, i, j, h, w, self.size, Image.NEAREST)
+        dist = F.resized_crop(dist, i, j, h, w, self.size, Image.NEAREST)
 
         return {"image": img, "seg": seg, "dist": dist}
 
@@ -96,29 +134,25 @@ class RandomCrop(object):
 class Resize(object):
     """
     Resize both image and targets.
+    If size is int, smaller edge is resized to match size, while bigger edge
+    is scaled down so that the aspect ratio of the figure doesnt change.
 
     Args:
-        - size (sequence or int): size to rescale to.
-        - interpolation (PIL constant): type of interpolation to use.
+        - size (sequence or int): if int, size to rescale smaller edge to.
 
     NB: It's necessary that the interpolation is NEAREST for the targets,
-    otherwise new classes might be created that have no meaning.
+    otherwise new classes might be created that have no real meaning.
     """
 
-    def __init__(self, size, interpolation=Image.NEAREST):
-
-        assert isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)
-
+    def __init__(self, size):
         self.size = size
-        self.interpolation = interpolation
 
     def __call__(self, sample):
-
         img, seg, dist = sample["image"], sample["seg"], sample["dist"]
 
-        img = F.resize(img, self.size, self.interpolation)
-        seg = F.resize(seg, self.size, self.interpolation)
-        dist = F.resize(dist, self.size, self.interpolation)
+        img = F.resize(img, self.size, Image.BILINEAR)
+        seg = F.resize(seg, self.size, Image.NEAREST)
+        dist = F.resize(dist, self.size, Image.NEAREST)
 
         return {"image": img, "seg": seg, "dist": dist}
 
@@ -129,7 +163,6 @@ class ToTensor(object):
     """
 
     def __call__(self, sample):
-
         img, seg, dist = sample["image"], sample["seg"], sample["dist"]
 
         img = F.to_tensor(img)
