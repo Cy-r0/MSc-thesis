@@ -40,11 +40,12 @@ class VOCDualTask(Dataset):
             raise ValueError("Wrong image_set entered!")
 
         with open(os.path.join(imageset_file), "r") as f:
-            file_names = [x.strip() for x in f.readlines()]
+            file_names = [l.strip() for l in f.readlines()]
 
-        self.images = [os.path.join(image_dir, x + ".jpg") for x in file_names]
-        self.segs = [os.path.join(seg_dir, x + ".png") for x in file_names]
-        self.dists = [os.path.join(dist_dir, x + ".png") for x in file_names]
+        self.img_ids = [n.replace("_", "") for n in file_names]
+        self.images = [os.path.join(image_dir, n + ".jpg") for n in file_names]
+        self.segs = [os.path.join(seg_dir, n + ".png") for n in file_names]
+        self.dists = [os.path.join(dist_dir, n + ".png") for n in file_names]
         
         assert (len(self.images) == len(self.segs)
             and len(self.images) == len(self.dists))
@@ -57,16 +58,26 @@ class VOCDualTask(Dataset):
         Returns:
             - tuple: image (PIL image), target (PIL Image).
         """
+        img_id = self.img_ids[index]
         img = Image.open(self.images[index])
         seg = Image.open(self.segs[index])
         dist = Image.open(self.dists[index])
+
+        print(img_id)
 
         sample = {"image": img, "seg": seg, "dist": dist}
 
         if self.transform is not None:
             sample = self.transform(sample)
         
-        return sample
+        indexed_sample = {
+            "img_idx": img_id,
+            "image": sample["image"],
+            "seg": sample["seg"],
+            "dist": sample["dist"]
+        }
+
+        return indexed_sample
 
     def __len__(self):
         return len(self.images)
