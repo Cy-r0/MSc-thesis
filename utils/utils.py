@@ -1,3 +1,5 @@
+import warnings
+
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +19,7 @@ def adjust_lr(optimizer, i, max_i, initial_lr, pow):
     optimizer.param_groups[0]['lr'] = lr
     optimizer.param_groups[1]['lr'] = 10 * lr
     return lr
+
 
 def colormap(batch, cmap="viridis"):
     """
@@ -39,6 +42,7 @@ def colormap(batch, cmap="viridis"):
 
     return batch
 
+
 def get_params(model, key):
     """
     Get model parameters.
@@ -56,6 +60,7 @@ def get_params(model, key):
                 for p in m[1].parameters():
                     yield p
 
+
 def log_confusion_mat(logger, confusion_mat, figsize, title, fmt, epoch, xlabel, ylabel):
     """
     Log confusion matrix to tensorboard as matplotlib figure.
@@ -68,13 +73,22 @@ def log_confusion_mat(logger, confusion_mat, figsize, title, fmt, epoch, xlabel,
     confusion_img = figure_to_image(fig, close=True)
     logger.add_image(title, confusion_img, epoch)
 
+
 def normalise_confusion_mat(confusion_mat):
+
+    # Initialise container for normalised matrix
     normalised = np.zeros(confusion_mat.shape)
 
     for c_i in range(len(confusion_mat)):
-        normalised[c_i] = confusion_mat[c_i] / confusion_mat[c_i].sum()
+        # Avoid division by zero
+        if confusion_mat[c_i].sum() != 0:
+            normalised[c_i] = confusion_mat[c_i] / confusion_mat[c_i].sum()
+        else:
+            warnings.warn("Row of confusion matrix is zero")
+            normalised[c_i] = confusion_mat[c_i]
 
     return normalised
+
 
 def postprocess(seg, dist, energy_cut, min_area=30, debug=False):
     """
@@ -159,6 +173,10 @@ def postprocess(seg, dist, energy_cut, min_area=30, debug=False):
 
 
 def show(img):
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1,2,0)), interpolation="nearest")
+    npimg = img.cpu().numpy()
+
+    if len(img.shape) == 3:
+        plt.imshow(np.transpose(npimg, (1,2,0)), interpolation="nearest")
+    elif len(img.shape) == 2:
+        plt.imshow(npimg, interpolation="nearest")
 

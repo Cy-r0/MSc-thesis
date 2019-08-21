@@ -30,7 +30,7 @@ from datasets.voc_dual_task import VOCDualTask
 from models.deeplabv3plus_multitask import Deeplabv3plus_multitask
 import transforms.transforms as myT
 from config.config import VOCConfig
-import utils.helpers as helpers
+import utils.utils as utils
 
 
 cfg = VOCConfig()
@@ -155,7 +155,7 @@ def log_all_confusion_mat(
         postfix = "_n"
         fmt = "0.3f"
 
-    helpers.log_confusion_mat(
+    utils.log_confusion_mat(
         logger,
         train_seg,
         (16,10),
@@ -164,7 +164,7 @@ def log_all_confusion_mat(
         epoch,
         list(cfg.CLASSES.values()),
         list(cfg.CLASSES.values()))
-    helpers.log_confusion_mat(
+    utils.log_confusion_mat(
         logger,
         train_dist,
         (9,7),
@@ -173,7 +173,7 @@ def log_all_confusion_mat(
         epoch,
         "auto",
         "auto")
-    helpers.log_confusion_mat(
+    utils.log_confusion_mat(
         logger,
         val_seg,
         (16,10),
@@ -182,7 +182,7 @@ def log_all_confusion_mat(
         epoch,
         list(cfg.CLASSES.values()),
         list(cfg.CLASSES.values()))
-    helpers.log_confusion_mat(
+    utils.log_confusion_mat(
         logger,
         val_dist,
         (9,7),
@@ -245,8 +245,8 @@ def train(rank, world_size):
     # Optimiser setup
     optimiser = optim.SGD(
         params = [
-            {'params': helpers.get_params(model, key='1x'), 'lr': cfg.TRAIN_LR},
-            {'params': helpers.get_params(model, key='10x'), 'lr': 10 * cfg.TRAIN_LR}
+            {'params': utils.get_params(model, key='1x'), 'lr': cfg.TRAIN_LR},
+            {'params': utils.get_params(model, key='10x'), 'lr': 10 * cfg.TRAIN_LR}
         ],
         momentum=cfg.TRAIN_MOMENTUM)
 
@@ -295,7 +295,7 @@ def train(rank, world_size):
             train_dist = train_batch["dist"].mul(255).round().long().squeeze(1).to(rank)
 
             if cfg.ADJUST_LR:
-                lr = helpers.adjust_lr(
+                lr = utils.adjust_lr(
                     optimiser,
                     i, max_i,
                     cfg.TRAIN_LR,
@@ -438,27 +438,27 @@ def train(rank, world_size):
             if cfg.LOG:
                 # Convert training data for plotting
                 train_input_tb = make_grid(train_inputs).cpu().numpy()
-                train_seg_tb = make_grid(helpers.colormap(
+                train_seg_tb = make_grid(utils.colormap(
                     train_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
-                train_seg_prediction_tb = make_grid(helpers.colormap(
+                train_seg_prediction_tb = make_grid(utils.colormap(
                     torch.argmax(train_predicted_seg, dim=1).float() \
                     .div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
-                train_dist_tb = make_grid(helpers.colormap(
+                train_dist_tb = make_grid(utils.colormap(
                     train_dist.float().div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
-                train_dist_prediction_tb = make_grid(helpers.colormap(
+                train_dist_prediction_tb = make_grid(utils.colormap(
                     torch.argmax(train_predicted_dist, dim=1).float() \
                     .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()                                         
 
                 # Convert val data for plotting
                 val_input_tb = make_grid(val_inputs).cpu().numpy()
-                val_seg_tb = make_grid(helpers.colormap(
+                val_seg_tb = make_grid(utils.colormap(
                     val_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
-                val_seg_prediction_tb = make_grid(helpers.colormap(
+                val_seg_prediction_tb = make_grid(utils.colormap(
                     torch.argmax(val_predicted_seg, dim=1).float() \
                     .div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
-                val_dist_tb = make_grid(helpers.colormap(
+                val_dist_tb = make_grid(utils.colormap(
                     val_dist.float().div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
-                val_dist_prediction_tb = make_grid(helpers.colormap(
+                val_dist_prediction_tb = make_grid(utils.colormap(
                     torch.argmax(val_predicted_dist, dim=1).float() \
                     .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
 
@@ -536,13 +536,13 @@ def train(rank, world_size):
                     val_dist_confusion /= len(loader_val)
 
                     # Normalise confusion matrices
-                    train_seg_confusion_n = helpers.normalise_confusion_mat(
+                    train_seg_confusion_n = utils.normalise_confusion_mat(
                         train_seg_confusion)
-                    train_dist_confusion_n = helpers.normalise_confusion_mat(
+                    train_dist_confusion_n = utils.normalise_confusion_mat(
                         train_dist_confusion)
-                    val_seg_confusion_n = helpers.normalise_confusion_mat(
+                    val_seg_confusion_n = utils.normalise_confusion_mat(
                         val_seg_confusion)
-                    val_dist_confusion_n = helpers.normalise_confusion_mat(
+                    val_dist_confusion_n = utils.normalise_confusion_mat(
                         val_dist_confusion)
 
                     # Log confusion matrices to tensorboard
