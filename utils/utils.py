@@ -90,7 +90,7 @@ def normalise_confusion_mat(confusion_mat):
     return normalised
 
 
-def postprocess(seg, dist, energy_cut, min_area=30, debug=False):
+def postprocess(seg, dist, energy_cut, min_area=40, debug=False):
     """
     Extract object instances from neural network outputs (seg and dist).
     Current pipeline:
@@ -122,10 +122,13 @@ def postprocess(seg, dist, energy_cut, min_area=30, debug=False):
 
     # Cut image at energy level
     _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
-    _, contours, _ = cv2.findContours(np.copy(thres), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, hierarchy = cv2.findContours(
+        np.copy(thres), 
+        cv2.RETR_TREE, 
+        cv2.CHAIN_APPROX_SIMPLE)
 
     # Get rid of small contours (they often appear due to noise)
-    contours = [c for c in contours if cv2.contourArea(c) >= min_area]
+    #contours = [c for c in contours if cv2.contourArea(c) >= min_area]
 
     # Show all contours
     if debug:
@@ -137,7 +140,25 @@ def postprocess(seg, dist, energy_cut, min_area=30, debug=False):
 
         # Create binary mask of contoured region
         mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
-        cv2.drawContours(mask, [contour], -1, 1, -1)
+        cv2.drawContours(mask, [contour], -1, 255, -1)
+
+        # Create binary mask for children
+        children_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+
+        # Find first child
+        child_idx = hierarchy[0, c, 2]
+
+        # Overlay masks of all children
+        while child_idx != -1:
+            cv2.drawContours(children_mask, [contours[child_idx]], -1, 255, -1)
+            #print("child is", child_idx)
+            #cv2.imshow("children mask", children_mask)
+            #cv2.waitKey(0)
+
+            child_idx = hierarchy[0, child_idx, 0]
+
+        # Subtract children mask from parent mask to preserve holes
+        mask = cv2.bitwise_xor(mask, children_mask)
 
         scores = [0] * len(seg)
 
@@ -152,20 +173,18 @@ def postprocess(seg, dist, energy_cut, min_area=30, debug=False):
             assert average >= 0 and average <= 1
             scores[s] = average
         
-        # Discard background and unlabelled instances
-        if np.argmax(scores) != 0 and np.argmax(scores) != 21:
+        # Discard background, unlabelled and small instances
+        if np.argmax(scores) != 0 and np.argmax(scores) != 21 and area > min_area:
             instance_dict = {
                 "mask": mask,
                 "scores": scores
             }
             instances.append(instance_dict)
 
-            # Show binary mask and print class
+            # Show final mask and print class
             if debug:
                 print("class:", np.argmax(scores))
-                one_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
-                cv2.drawContours(one_mask, [contour], -1, 255, -1)
-                cv2.imshow("mask", one_mask)
+                cv2.imshow("mask", mask)
                 cv2.waitKey(0)
 
     # Return a list of instances for each image in the batch
