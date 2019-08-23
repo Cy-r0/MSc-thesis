@@ -1,4 +1,5 @@
 import warnings
+import timeit
 
 import cv2
 import matplotlib.pyplot as plt
@@ -90,7 +91,7 @@ def normalise_confusion_mat(confusion_mat):
     return normalised
 
 
-def postprocess(seg, dist, energy_cut, min_area=40, debug=True):
+def postprocess(seg, dist, energy_cut, min_area=80, debug=False):
     """
     Extract object instances from neural network outputs (seg and dist).
     Current pipeline:
@@ -109,11 +110,14 @@ def postprocess(seg, dist, energy_cut, min_area=40, debug=True):
         - debug (bool): boolean flag that shows how images are processed.
     """
 
-    seg = seg.cpu().detach().numpy()
-    #seg = torch.clamp(seg, 0.001, 1).cpu().detach().numpy()
+    #tic = timeit.default_timer()
+
+
+    #seg = seg.cpu().detach().numpy()
+    seg = torch.clamp(seg, 0.001, 1).cpu().detach().numpy()
     
-    dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
-    #dist = dist.squeeze(dim=0).cpu().byte().numpy()
+    #dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
+    dist = dist.squeeze(dim=0).cpu().byte().numpy()
 
     instances = []
 
@@ -124,10 +128,12 @@ def postprocess(seg, dist, energy_cut, min_area=40, debug=True):
 
     # Cut image at energy level
     _, thres = cv2.threshold(np.copy(dist), energy_cut, 255, cv2.THRESH_BINARY)
+    #PERF: findContours is the most expensive function (3-20 ms)
     _, contours, hierarchy = cv2.findContours(
         np.copy(thres), 
-        cv2.RETR_TREE, 
+        cv2.RETR_TREE,
         cv2.CHAIN_APPROX_NONE)
+
 
     # Get rid of small contours (they often appear due to noise)
     #contours = [c for c in contours if cv2.contourArea(c) >= min_area]
@@ -139,73 +145,111 @@ def postprocess(seg, dist, energy_cut, min_area=40, debug=True):
         cv2.imshow("all contours bigger than min_area", distcopy)
         cv2.waitKey(0)
 
+    #toc = timeit.default_timer()
+    #print("find contours time: %.2f" %((toc-tic)*1000))
+
+
     for c, contour in enumerate(contours):
 
-        # Create binary mask of contoured region
-        mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
-        cv2.drawContours(mask, [contour], -1, 255, -1)
+        # Filter out smaller contours
+        if cv2.contourArea(contour) >= min_area:
 
-        # Create binary mask for children
-        children_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
 
-        # Find first child
-        child_idx = hierarchy[0, c, 2]
+            #tic = timeit.default_timer()
 
-        # Overlay masks of all children
-        while child_idx != -1:
-            cv2.drawContours(children_mask, [contours[child_idx]], -1, 255, -1)
-            #print("child is", child_idx)
-            #cv2.imshow("children mask", children_mask)
-            #cv2.waitKey(0)
+            #PERF: this part up to next PERF takes about 0.4 ms
 
-            child_idx = hierarchy[0, child_idx, 0]
+            # Create binary mask of contoured region
+            mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+            cv2.drawContours(mask, [contour], -1, 255, -1)
 
-        # Subtract children mask from parent mask to preserve holes
-        mask = cv2.bitwise_xor(mask, children_mask)
+            # Create binary mask for children
+            children_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
 
-        scores = [0] * len(seg)
+            # Find first child
+            child_idx = hierarchy[0, c, 2]
 
-        for s, seg_class in enumerate(seg):
+            # Overlay masks of all children
+            while child_idx != -1:
+                cv2.drawContours(children_mask, [contours[child_idx]], -1, 255, -1)
+                #print("child is", child_idx)
+                #cv2.imshow("children mask", children_mask)
+                #cv2.waitKey(0)
 
-            # Get rid of semantic pixels outside the mask
-            seg_class = cv2.bitwise_and(seg_class, seg_class, mask=mask)
+                child_idx = hierarchy[0, child_idx, 0]
 
-            # average pixel values for object classification
-            area = cv2.countNonZero(seg_class)
-            average = cv2.sumElems(seg_class)[0] / area
-            assert average >= 0 and average <= 1
-            scores[s] = average
-        
-        # Check if contour contains only low energy levels
-        # You need to get rid of the perimeter of the mask
-        perimeter = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
-        cv2.drawContours(perimeter, [contour], -1, 255, 1)
-        mask_without_perimeter = cv2.bitwise_xor(perimeter, mask)
-        # Mask distance with the mask without perimeter
-        masked_dist = cv2.bitwise_and(dist, dist, mask=mask_without_perimeter)
+            # Subtract children mask from parent mask to preserve holes
+            mask = cv2.bitwise_xor(mask, children_mask)
 
-        # Find which energy levels are inside the contour
-        energy_inside = np.unique(masked_dist)
-        contains_only_lower_levels = all(l <= energy_cut for l in energy_inside)
-        print(energy_inside)
-        print(contains_only_lower_levels)
 
-        # Discard background, unlabelled and small instances
-        if (np.argmax(scores) != 0
-            and np.argmax(scores) != 21
-            and area > min_area
-            and not contains_only_lower_levels):
-            instance_dict = {
-                "mask": mask,
-                "scores": scores
-            }
-            instances.append(instance_dict)
+            #toc = timeit.default_timer()
+            #print("mask creation time:", toc-tic)
 
-            # Show final mask and print class
-            if debug:
-                print("class:", np.argmax(scores))
-                cv2.imshow("mask", mask)
-                cv2.waitKey(0)
+            #tic = timeit.default_timer()
+
+
+            # Calculate area of instance mask
+            mask_area = cv2.countNonZero(mask)
+            
+            # Initialise scores list
+            scores = [0] * seg.shape[0]
+
+            for s, seg_class in enumerate(seg):
+
+                # Get rid of semantic pixels outside the mask
+
+                tik = timeit.default_timer()
+
+                seg_class = cv2.bitwise_and(seg_class, seg_class, mask=mask)
+
+                tok = timeit.default_timer()
+                print("masking timeL", tok-tik)
+
+                # Calculate scores for each class by averaging pixel scores
+                average = cv2.sumElems(seg_class)[0] / mask_area
+
+                assert average >= 0 and average <= 1
+
+                scores[s] = average
+            
+            #toc = timeit.default_timer()
+            #print("semantic time:", toc-tic)
+
+
+            tic = timeit.default_timer()
+            
+            # Check if contour contains only low energy levels
+            # You need to get rid of the perimeter of the mask
+            perimeter = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+            cv2.drawContours(perimeter, [contour], -1, 255, 1)
+            mask_without_perimeter = cv2.bitwise_xor(perimeter, mask)
+            # Mask distance with the mask without perimeter
+            masked_dist = cv2.bitwise_and(dist, dist, mask=mask_without_perimeter)
+
+            # Find which energy levels are inside the contour
+            energy_inside = np.unique(masked_dist)
+            contains_only_lower_levels = all(l <= energy_cut for l in energy_inside)
+            #print(energy_inside)
+            #print(contains_only_lower_levels)
+
+            # Discard background, unlabelled and low energy instances
+            if (np.argmax(scores) != 0
+                and np.argmax(scores) != 21
+                and not contains_only_lower_levels):
+                instance_dict = {
+                    "mask": mask,
+                    "scores": scores
+                }
+                instances.append(instance_dict)
+
+                # Show final mask and print class
+                if debug:
+                    print("class:", np.argmax(scores))
+                    cv2.imshow("mask", mask)
+                    cv2.waitKey(0)
+            
+            toc = timeit.default_timer()
+            print("low energy exclusion time: %.2f" %((toc-tic)*1000))
 
     # Return a list of instances for each image in the batch
     return instances
@@ -219,3 +263,30 @@ def show(img):
     elif len(img.shape) == 2:
         plt.imshow(npimg, interpolation="nearest")
 
+
+
+
+
+"""            # Apply instance mask to semantic segmentation
+            # NOTE: seg needs to be converted from CHW to HWC
+
+
+            tic = timeit.default_timer()
+
+            seg2 = np.transpose(seg, (1,2,0))
+            masked_seg = cv2.bitwise_and(seg2, seg2, mask=mask)
+
+            toc = timeit.default_timer()
+            print("new masking time:", toc-tic)
+
+            # Calculate average score of each class
+            # Need to flatten the 2d images in masked_seg
+
+            masked_seg = masked_seg.reshape(
+                masked_seg.shape[0] * masked_seg.shape[1],
+                masked_seg.shape[2])
+            # Calculate scores for each class by averaging pixel scores
+            scores = np.sum(masked_seg, axis=0) / mask_area
+ 
+            for s in scores:
+                assert s >= 0 and s <= 1"""
