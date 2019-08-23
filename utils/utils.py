@@ -90,7 +90,7 @@ def normalise_confusion_mat(confusion_mat):
     return normalised
 
 
-def postprocess(seg, dist, energy_cut, min_area=40, debug=False):
+def postprocess(seg, dist, energy_cut, min_area=40, debug=True):
     """
     Extract object instances from neural network outputs (seg and dist).
     Current pipeline:
@@ -109,15 +109,17 @@ def postprocess(seg, dist, energy_cut, min_area=40, debug=False):
         - debug (bool): boolean flag that shows how images are processed.
     """
 
-    seg = torch.clamp(seg, 0.001, 1).cpu().detach().numpy()
-    #dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
-    dist = dist.squeeze(dim=0).cpu().byte().numpy()
+    seg = seg.cpu().detach().numpy()
+    #seg = torch.clamp(seg, 0.001, 1).cpu().detach().numpy()
+    
+    dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
+    #dist = dist.squeeze(dim=0).cpu().byte().numpy()
 
     instances = []
 
     # Show distance img
     if debug:
-        plt.imshow(dist)
+        plt.imshow(dist / 255)
         plt.show()
 
     # Cut image at energy level
@@ -125,15 +127,16 @@ def postprocess(seg, dist, energy_cut, min_area=40, debug=False):
     _, contours, hierarchy = cv2.findContours(
         np.copy(thres), 
         cv2.RETR_TREE, 
-        cv2.CHAIN_APPROX_SIMPLE)
+        cv2.CHAIN_APPROX_NONE)
 
     # Get rid of small contours (they often appear due to noise)
     #contours = [c for c in contours if cv2.contourArea(c) >= min_area]
 
     # Show all contours
     if debug:
-        cv2.drawContours(dist, contours, -1, 255, 1)
-        cv2.imshow("all contours bigger than min_area", dist)
+        distcopy = np.copy(dist)
+        cv2.drawContours(distcopy, contours, -1, 255, 1)
+        cv2.imshow("all contours bigger than min_area", distcopy)
         cv2.waitKey(0)
 
     for c, contour in enumerate(contours):
@@ -173,8 +176,25 @@ def postprocess(seg, dist, energy_cut, min_area=40, debug=False):
             assert average >= 0 and average <= 1
             scores[s] = average
         
+        # Check if contour contains only low energy levels
+        # You need to get rid of the perimeter of the mask
+        perimeter = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+        cv2.drawContours(perimeter, [contour], -1, 255, 1)
+        mask_without_perimeter = cv2.bitwise_xor(perimeter, mask)
+        # Mask distance with the mask without perimeter
+        masked_dist = cv2.bitwise_and(dist, dist, mask=mask_without_perimeter)
+
+        # Find which energy levels are inside the contour
+        energy_inside = np.unique(masked_dist)
+        contains_only_lower_levels = all(l <= energy_cut for l in energy_inside)
+        print(energy_inside)
+        print(contains_only_lower_levels)
+
         # Discard background, unlabelled and small instances
-        if np.argmax(scores) != 0 and np.argmax(scores) != 21 and area > min_area:
+        if (np.argmax(scores) != 0
+            and np.argmax(scores) != 21
+            and area > min_area
+            and not contains_only_lower_levels):
             instance_dict = {
                 "mask": mask,
                 "scores": scores

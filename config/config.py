@@ -48,10 +48,9 @@ class VOCConfig(object):
             17: "sheep",
             18: "sofa",
             19: "train",
-            20: "tvmonitor",
-            255: "unlabelled"
+            20: "tvmonitor"
         }
-        self.N_CLASSES = len(self.CLASSES)
+        self.N_CLASSES = len(self.CLASSES) + 1 # TODO: change back to 21
         self.LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
         self.N_ENERGY_LEVELS = len(self.LEVEL_WIDTHS) + 1
 

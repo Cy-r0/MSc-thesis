@@ -84,11 +84,14 @@ def setup_model(device):
     pretrained_dict = torch.load(
         os.path.join(
             cfg.PRETRAINED_PATH,
-            "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
-    pretrained_dict = {
-        k: v for k, v in pretrained_dict.items()
-        if "backbone" in k and k in current_dict
+            "deeplabv3plus_multitask_xception_VOC2012_epoch45_final.pth"))
+
+    # Get rid of the word "module" in keys,
+    # since this model is not being used with dataparallel anymore
+    pretrained_dict = { 
+        k[7:]: v for k, v in pretrained_dict.items()
     }
+
     current_dict.update(pretrained_dict)
     model.load_state_dict(current_dict)
 
@@ -143,36 +146,59 @@ def inference():
             predicted_seg = softmax(predicted_seg)
             predicted_dist = softmax(predicted_dist)
             
-            #TODO: now this is gndtruth, need to change back to predictions
-            for pred_seg, pred_dist in zip(seg, dist):
+            use_gndtruth = False
 
-                pred_seg = pred_seg.cpu()
-                pred_seg[pred_seg == 255] = 0
-                pred_seg_onehot = torch.FloatTensor(
-                    22,
-                    pred_seg.shape[1],
-                    pred_seg.shape[2]) \
-                    .zero_()
-                pred_seg_onehot = pred_seg_onehot.scatter(0, pred_seg, 1)
+            if use_gndtruth:
+                #TODO: now this is gndtruth, need to change back to predictions
+                for pred_seg, pred_dist in zip(seg, dist):
 
-                #tic = timeit.default_timer()
+                    pred_seg = pred_seg.cpu()
+                    pred_seg[pred_seg == 255] = 0
+                    pred_seg_onehot = torch.FloatTensor(
+                        22,
+                        pred_seg.shape[1],
+                        pred_seg.shape[2]) \
+                        .zero_()
+                    pred_seg_onehot = pred_seg_onehot.scatter(0, pred_seg, 1)
 
-                instances = utils.postprocess(pred_seg_onehot, pred_dist, energy_cut=0)
+                    #tic = timeit.default_timer()
 
-                #toc = timeit.default_timer()
-                #print(toc-tic)
+                    #instances = utils.postprocess(pred_seg_onehot, pred_dist, energy_cut=0)
+                    instances = utils.postprocess(pred_seg_onehot, pred_dist, energy_cut=0)
 
-                for instance in instances:
-                    # encoded bytestring in mask needs to be converted to ascii
-                    encoded_mask = mask.encode(np.asfortranarray(instance["mask"]))
-                    encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")
-                    instance_dict = {
-                        "image_id": img_id,
-                        "category_id": int(np.argmax(instance["scores"])),
-                        "segmentation": encoded_mask,
-                        "score": max(instance["scores"])
-                    }
-                    json_data.append(instance_dict)
+                    #toc = timeit.default_timer()
+                    #print(toc-tic)
+
+                    for instance in instances:
+                        # encoded bytestring in mask needs to be converted to ascii
+                        encoded_mask = mask.encode(np.asfortranarray(instance["mask"]))
+                        encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")
+                        instance_dict = {
+                            "image_id": img_id,
+                            "category_id": int(np.argmax(instance["scores"])),
+                            "segmentation": encoded_mask,
+                            "score": max(instance["scores"])
+                        }
+                        json_data.append(instance_dict)
+
+            else:
+                # use actual predictions from neural network
+                for pred_seg, pred_dist in zip(predicted_seg, predicted_dist):
+                    
+                    instances = utils.postprocess(pred_seg, pred_dist, energy_cut=1)
+
+                    for instance in instances:
+                        # encoded bytestring in mask needs to be converted to ascii
+                        encoded_mask = mask.encode(np.asfortranarray(instance["mask"]))
+                        encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")
+                        instance_dict = {
+                            "image_id": img_id,
+                            "category_id": int(np.argmax(instance["scores"])),
+                            "segmentation": encoded_mask,
+                            "score": max(instance["scores"])
+                        }
+                        json_data.append(instance_dict)
+
 
     # Write results to json
     with open("COCO_style_results/voc2012_val.json", 'w') as f:
