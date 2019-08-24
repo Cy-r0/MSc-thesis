@@ -51,7 +51,9 @@ class VOCConfig(object):
             20: "tvmonitor"
         }
         self.N_CLASSES = len(self.CLASSES) + 1 # TODO: change back to 21
-        self.LEVEL_WIDTHS = [1,5,6,8,9,10,12,14,20]
+        # NOTE: I dont recommend setting the width of the lowest level to 1 pixel,
+        # because findcontours() can leak through it
+        self.LEVEL_WIDTHS = [2,3,4,6,8,11,14,18,24]
         self.N_ENERGY_LEVELS = len(self.LEVEL_WIDTHS) + 1
 
 
