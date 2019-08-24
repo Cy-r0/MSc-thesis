@@ -120,6 +120,10 @@ class DistanceTransform(object):
                 else:
                     # Mask single colour in image
                     c_mask = cv2.inRange(img, c, c)
+                    # Dilate mask by 2 pixels, which is the average 
+                    # halfwidth of the unlabelled ring
+                    kernel = np.ones((5,5),np.uint8)
+                    c_mask = cv2.dilate(c_mask, kernel, iterations=1)
                     # Find all contours and accumulate them
                     _, contours, _ = cv2.findContours(
                         c_mask,
