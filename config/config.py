@@ -50,7 +50,7 @@ class VOCConfig(object):
             19: "train",
             20: "tvmonitor"
         }
-        self.N_CLASSES = len(self.CLASSES) + 1 # TODO: change back to 21
+        self.N_CLASSES = len(self.CLASSES) # TODO: change back to 21
         # NOTE: I dont recommend setting the width of the lowest level to 1 pixel,
         # because findcontours() can leak through it
         self.LEVEL_WIDTHS = [2,3,4,6,8,11,14,18,24]
@@ -76,8 +76,8 @@ class VOCConfig(object):
         # TRAIN_BATCH_SIZE is the batch size contained in each GPU
         # so the total batch size will be BATCH_SIZE * GPUS
         self.TRAIN_BATCH_SIZE = 4
-        self.TRAIN_EPOCHS = 45
-        self.TRAIN_LR = 0.003
+        self.TRAIN_EPOCHS = 40
+        self.TRAIN_LR = 0.06
         self.TRAIN_MOMENTUM = 0.5
         self.TRAIN_POWER = 0.9
 
