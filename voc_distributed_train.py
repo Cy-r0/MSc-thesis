@@ -56,11 +56,11 @@ def setup_dataloaders(rank):
     # Datasets
     VOC_train = VOCDualTask(
         cfg.DSET_ROOT,
-        image_set="train",
+        image_set="train_75perc",
         transform=transform)
     VOC_val = VOCDualTask(
         cfg.DSET_ROOT,
-        image_set="val",
+        image_set="train_25perc",
         transform=transform)
     
     # Distributed samplers
@@ -94,7 +94,7 @@ def setup_dataloaders(rank):
 
 def setup_model(rank):
     """
-    Initialise model and load weights.
+    Initialise model and load pretrained backbone weights.
     """
     
     # Initialise model
@@ -110,20 +110,48 @@ def setup_model(rank):
             "\tGPUs used by all processes:", cfg.TRAIN_GPUS)
     # Wrap in distributed dataparallel
     model = DistributedDataParallel(model, device_ids=[rank], output_device=rank)
-
+    """
     # Load pretrained model weights only for backbone network
     if cfg.USE_PRETRAINED:
         current_dict = model.state_dict()
-        pretrained_dict = torch.load(
-            os.path.join(
-                cfg.PRETRAINED_PATH,
-                "deeplabv3plus_xception_VOC2012_epoch46_all.pth"))
+        pretrained_dict = torch.load(os.path.join(
+            cfg.PRETRAINED_PATH,
+            "mod_al_xception_imagenet.pth"))
+        # Keys of pretrained model need to be modified so they match keys
+        # of backbone in new model
         pretrained_dict = {
-            k: v for k, v in pretrained_dict.items()
-            if "backbone" in k and k in current_dict
+            "module.backbone." + k: v for k, v in pretrained_dict.items()
         }
+
         current_dict.update(pretrained_dict)
         model.load_state_dict(current_dict)
+
+        if rank == 0:
+            print("Loaded pretrained backbone.")
+    """
+
+    #load whole trained model
+     # Load trained weights TODO: fix loading
+    current_dict = model.state_dict()
+    pretrained_dict = torch.load(
+        os.path.join(
+            cfg.PRETRAINED_PATH,
+            "trained_model.pth"))
+
+    # Get rid of the word "module" in keys,
+    # since this model is not being used with dataparallel anymore
+    #pretrained_dict = { 
+    #    k[7:]: v for k, v in pretrained_dict.items()
+    #}
+
+    current_dict.update(pretrained_dict)
+    model.load_state_dict(current_dict)
+    
+    if rank == 0:
+        # Print number of model parameters
+        n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print("Number of learnable parameters:", n_params)
+
     
     return model
 
@@ -244,10 +272,8 @@ def train(rank, world_size):
 
     # Optimiser setup
     optimiser = optim.SGD(
-        params = [
-            {'params': utils.get_params(model, key='1x'), 'lr': cfg.TRAIN_LR},
-            {'params': utils.get_params(model, key='10x'), 'lr': 10 * cfg.TRAIN_LR}
-        ],
+        params = model.parameters(),
+        lr = cfg.TRAIN_LR,
         momentum=cfg.TRAIN_MOMENTUM)
 
     # Initialise iteration index
@@ -267,7 +293,7 @@ def train(rank, world_size):
 
         # Only initialise confusion matrices when they're going to be logged
         # Also, only log from process 0
-        if epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG and rank == 0:
+        if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG and rank == 0:
             train_seg_confusion = np.zeros(
                 (cfg.N_CLASSES, cfg.N_CLASSES),
                 dtype="float")
@@ -297,7 +323,8 @@ def train(rank, world_size):
             if cfg.ADJUST_LR:
                 lr = utils.adjust_lr(
                     optimiser,
-                    i, max_i,
+                    i,
+                    max_i,
                     cfg.TRAIN_LR,
                     cfg.TRAIN_POWER)
             else:
@@ -332,7 +359,7 @@ def train(rank, world_size):
                     .float().div(batch_pixels)
 
                 # Only calculate confusion matrices every few epochs
-                if epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
+                if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
 
                     # Flatten labels and predictions and append
                     total_seg_labels = train_seg.cpu().flatten()
@@ -395,7 +422,7 @@ def train(rank, world_size):
                     val_dist_acc += torch.sum(val_dist == dist_argmax) \
                         .float().div(batch_pixels)
 
-                    if epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
+                    if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
                         # Flatten labels and predictions and append
                         total_seg_labels = val_seg.cpu().flatten()
                         total_seg_predictions = seg_argmax.cpu().flatten()
@@ -464,36 +491,31 @@ def train(rank, world_size):
 
                 # Log scalars to tensorboardX
                 tbX_logger.add_scalars(
-                    "total_losses",
-                    {
+                    "total_losses", {
                         "train_loss": train_loss,
                         "val_loss": val_loss
                     },
                     epoch)
                 tbX_logger.add_scalars(
-                    "seg_losses",
-                    {  
+                    "seg_losses", {  
                         "train_seg_loss": train_seg_loss,
                         "val_seg_loss": val_seg_loss
                     },
                     epoch)
                 tbX_logger.add_scalars(
-                    "dist_losses",
-                    {
+                    "dist_losses", {
                         "train_dist_loss": train_dist_loss,
                         "val_dist_loss": val_dist_loss
                     },
                     epoch)
                 tbX_logger.add_scalars(
-                    "seg_acc",
-                    {
+                    "seg_acc", {
                         "train_seg_acc": train_seg_acc,
                         "val_seg_acc": val_seg_acc
                     },
                     epoch)
                 tbX_logger.add_scalars(
-                    "dist_acc",
-                    {
+                    "dist_acc", {
                         "train_dist_acc": train_dist_acc,
                         "val_dist_acc": val_dist_acc
                     },
@@ -502,7 +524,7 @@ def train(rank, world_size):
 
                 # it seems like tensorboard doesn't like saving a lot of images,
                 # so log images only at last epoch
-                if epoch == cfg.TRAIN_EPOCHS - 1:
+                if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1:
 
                     # Training images
                     tbX_logger.add_image("train_input", train_input_tb, epoch)
@@ -566,7 +588,7 @@ def train(rank, world_size):
                         isnormalised=True)
 
         # Save checkpoint
-        if epoch % 100 == 0 and epoch != 0 and rank == 0:
+        if epoch % 20 == 0 and epoch != 0 and rank == 0:
             save_path = os.path.join(
                 cfg.PRETRAINED_PATH,
                 "%s_%s_%s_epoch%d.pth"

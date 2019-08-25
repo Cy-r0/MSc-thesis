@@ -14,6 +14,7 @@ from sklearn.metrics import confusion_matrix
 import timeit
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 import torch.optim as optim
 from torch.utils.data import DataLoader, sampler
@@ -45,6 +46,7 @@ def setup_dataloader():
     # Dataset transforms
     transform = T.Compose([
         myT.Quantise(level_widths=cfg.LEVEL_WIDTHS),
+        #myT.Resize(cfg.DATA_RESCALE),
         myT.ToTensor()])
 
     # Datasets
@@ -84,7 +86,7 @@ def setup_model(device):
     pretrained_dict = torch.load(
         os.path.join(
             cfg.PRETRAINED_PATH,
-            "deeplabv3plus_multitask_xception_VOC2012_epoch45_final.pth"))
+            "trained_model.pth"))
 
     # Get rid of the word "module" in keys,
     # since this model is not being used with dataparallel anymore
@@ -127,6 +129,37 @@ def inference():
 
             img_id = int(batch["img_id"][0])
             inputs = batch["image"].to(device)
+            seg = batch["seg"]
+            dist = batch["dist"]
+
+            # calculate size to rescale to
+            original_h = inputs.shape[2]
+            original_w = inputs.shape[3]
+            if original_h > original_w:
+                rescaled_size = (
+                    cfg.DATA_RESCALE * original_h // original_w,
+                    cfg.DATA_RESCALE
+                )
+            else:
+                rescaled_size = (
+                    cfg.DATA_RESCALE,
+                    cfg.DATA_RESCALE * original_w // original_h
+                )
+
+            # Resize images
+            inputs = F.interpolate(
+                inputs,
+                size=rescaled_size,
+                mode="bilinear")
+            seg = F.interpolate(
+                seg,
+                size=rescaled_size,
+                mode="nearest")
+            dist = F.interpolate(
+                dist,
+                size=rescaled_size,
+                mode="nearest")
+
             # Labels need to be converted from float 0-1 to integers
             seg = batch["seg"].mul(255).round().long().squeeze(1).to(device)
             dist = batch["dist"].mul(255).round().long().squeeze(1).to(device)
@@ -142,6 +175,16 @@ def inference():
             #torch.cuda.synchronize()
             #print("model", start.elapsed_time(end))
 
+            # rescale predictions to original size
+            predicted_seg = F.interpolate(
+                predicted_seg,
+                size=(original_h, original_w),
+                mode="nearest")
+            predicted_dist = F.interpolate(
+                predicted_dist,
+                size=(original_h, original_w),
+                mode="nearest")
+
             # Softmax predictions
             predicted_seg = softmax(predicted_seg)
             predicted_dist = softmax(predicted_dist)
@@ -149,7 +192,6 @@ def inference():
             use_gndtruth = False
 
             if use_gndtruth:
-                #TODO: now this is gndtruth, need to change back to predictions
                 for pred_seg, pred_dist in zip(seg, dist):
 
                     pred_seg = pred_seg.cpu()
@@ -163,11 +205,10 @@ def inference():
 
                     #tic = timeit.default_timer()
 
-                    #instances = utils.postprocess(pred_seg_onehot, pred_dist, energy_cut=0)
                     instances = utils.postprocess(pred_seg_onehot, pred_dist, energy_cut=0)
 
                     #toc = timeit.default_timer()
-                    #print(toc-tic)
+                    #print("TOTAL postprocessing time: %.2f" %((toc-tic)*1000))
 
                     for instance in instances:
                         # encoded bytestring in mask needs to be converted to ascii
@@ -201,7 +242,7 @@ def inference():
 
 
     # Write results to json
-    with open("COCO_style_results/voc2012_val.json", 'w') as f:
+    with open("COCO_style_results/voc2012_val_deeplab.json", 'w') as f:
         json.dump(json_data, f)
 
 
