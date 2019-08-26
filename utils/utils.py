@@ -12,13 +12,13 @@ import torch.nn as nn
 
 
 
-def adjust_lr(optimizer, i, max_i, initial_lr, pow):
+def adjust_lr(optimiser, i, max_i, initial_lr, pow):
     """
     Gradually decrease learning rate as iterations increase.
     """
     lr = initial_lr * (1 - i/(max_i + 1)) ** pow
-    optimizer.param_groups[0]['lr'] = lr
-    optimizer.param_groups[1]['lr'] = 10 * lr
+    for param_group in optimiser.param_groups:
+        param_group["lr"] = lr
     return lr
 
 
@@ -42,24 +42,6 @@ def colormap(batch, cmap="viridis"):
     batch = batch.permute(0, 3, 1, 2)
 
     return batch
-
-
-def get_params(model, key):
-    """
-    Get model parameters.
-    NB: backbone is trained 10 times slower than the rest of the network.
-    Also, only conv2d layers are trained, batchnormalisation layers are kept
-        the same because backbone was already pretrained on Imagenet.
-    """
-    for m in model.named_modules():
-        if key == "1x":
-            if "backbone" in m[0] and isinstance(m[1], nn.Conv2d):
-                for p in m[1].parameters():
-                    yield p
-        elif key == "10x":
-            if "backbone" not in m[0] and isinstance(m[1], nn.Conv2d):
-                for p in m[1].parameters():
-                    yield p
 
 
 def log_confusion_mat(logger, confusion_mat, figsize, title, fmt, epoch, xlabel, ylabel):
@@ -113,11 +95,11 @@ def postprocess(seg, dist, energy_cut, min_area=80, debug=False):
     #tic = timeit.default_timer()
 
 
-    #seg = seg.cpu().detach().numpy()
-    seg = torch.clamp(seg, 0.001, 1).cpu().detach().numpy()
+    seg = seg.cpu().detach().numpy()
+    #seg = torch.clamp(seg, 0.001, 1).cpu().detach().numpy()
     
-    #dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
-    dist = dist.squeeze(dim=0).cpu().byte().numpy()
+    dist = torch.argmax(dist, dim=0).cpu().byte().numpy()
+    #dist = dist.squeeze(dim=0).cpu().byte().numpy()
 
     instances = []
 
@@ -198,12 +180,12 @@ def postprocess(seg, dist, energy_cut, min_area=80, debug=False):
 
                 # Get rid of semantic pixels outside the mask
 
-                tik = timeit.default_timer()
+                #tik = timeit.default_timer()
 
                 seg_class = cv2.bitwise_and(seg_class, seg_class, mask=mask)
 
-                tok = timeit.default_timer()
-                print("masking timeL", tok-tik)
+                #tok = timeit.default_timer()
+                #print("masking timeL", tok-tik)
 
                 # Calculate scores for each class by averaging pixel scores
                 average = cv2.sumElems(seg_class)[0] / mask_area
@@ -216,7 +198,7 @@ def postprocess(seg, dist, energy_cut, min_area=80, debug=False):
             #print("semantic time:", toc-tic)
 
 
-            tic = timeit.default_timer()
+            #tic = timeit.default_timer()
             
             # Check if contour contains only low energy levels
             # You need to get rid of the perimeter of the mask
@@ -248,8 +230,8 @@ def postprocess(seg, dist, energy_cut, min_area=80, debug=False):
                     cv2.imshow("mask", mask)
                     cv2.waitKey(0)
             
-            toc = timeit.default_timer()
-            print("low energy exclusion time: %.2f" %((toc-tic)*1000))
+            #toc = timeit.default_timer()
+            #print("low energy exclusion time: %.2f" %((toc-tic)*1000))
 
     # Return a list of instances for each image in the batch
     return instances
@@ -264,29 +246,107 @@ def show(img):
         plt.imshow(npimg, interpolation="nearest")
 
 
+def postprocess_2(seg, dist, energy_cut, min_area=120, debug=False):
+    """
+    Extract object instances from neural network outputs (seg and dist).
+    Current pipeline:
+        TODO: write pipeline
 
+    Args:
+        - seg (3D float ndarray).
+        - dist (3D float ndarray).
+        - energy_cut (int): energy level to binarize image at.
+        - min_area (int): minimum area of a contour in pixels (empirically determined).
+        - debug (bool): boolean flag that shows how images are processed.
+    """
 
+    seg_argmax = torch.argmax(seg, dim=0).long() # TODO: check if byte is faster
+    dist = torch.argmax(dist, dim=0).long()
 
-"""            # Apply instance mask to semantic segmentation
-            # NOTE: seg needs to be converted from CHW to HWC
+    # Show distance img
+    if debug:
+        dist_np = dist.cpu().numpy()
+        plt.imshow(dist_np / 255)
+        plt.show()
+        seg_np = seg_argmax.cpu().numpy()
+        plt.imshow(seg_np / 255)
+        plt.show()
 
+    # Threshold dist at chosen energy level
+    dist_thres = torch.where(
+        dist > energy_cut,
+        torch.tensor(1).cuda(),
+        torch.tensor(0).cuda())
 
-            tic = timeit.default_timer()
+    # Show thresholded dist
+    if debug:
+        thres_np = dist_thres.cpu().numpy()
+        plt.imshow(thres_np)
+        plt.show()
 
-            seg2 = np.transpose(seg, (1,2,0))
-            masked_seg = cv2.bitwise_and(seg2, seg2, mask=mask)
+    # Mask semantic with thresholded dist
+    masked_seg = torch.where(
+        dist_thres > 0,
+        seg_argmax,
+        dist_thres).byte()
 
-            toc = timeit.default_timer()
-            print("new masking time:", toc-tic)
+    # Show masked seg
+    if debug:
+        seg_np = masked_seg.cpu().numpy()
+        plt.imshow(seg_np)
+        plt.show()
 
-            # Calculate average score of each class
-            # Need to flatten the 2d images in masked_seg
+    # Binarise segmentation and convert to numpy before feeding to findContours()
+    # NOTE: opencv only accepts uint8 as a format
+    binarised_seg = torch.where(
+        masked_seg > 0,
+        torch.tensor(1).cuda(),
+        torch.tensor(0).cuda()).byte().cpu().numpy()
 
-            masked_seg = masked_seg.reshape(
-                masked_seg.shape[0] * masked_seg.shape[1],
-                masked_seg.shape[2])
-            # Calculate scores for each class by averaging pixel scores
-            scores = np.sum(masked_seg, axis=0) / mask_area
+    # Find contours. PERF: findContours is the most expensive function (3-20 ms)
+    _, contours, hierarchy = cv2.findContours(
+        binarised_seg,
+        cv2.RETR_LIST, #RETR_TREE,
+        cv2.CHAIN_APPROX_NONE)
+    # NOTE: EMERGENT BEHAVIOUR:
+    # the model seems to never predict a contour inside a contour,
+    # maybe you can exploit this by not checking for holes
+    
+    # Show thresholded segmentation
+    if debug:
+        seg_copy = np.copy(binarised_seg)
+        cv2.drawContours(seg_copy, contours, -1, 255, 1)
+        plt.imshow(seg_copy)
+        plt.show()
  
-            for s in scores:
-                assert s >= 0 and s <= 1"""
+    instances = []
+
+    # Iterate through contours
+    for contour in contours:
+
+        if cv2.contourArea(contour) >= min_area:
+
+            # Create binary mask of contour
+            contour_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+            cv2.drawContours(contour_mask, [contour], -1, 255, -1)
+            contour_mask_area = cv2.countNonZero(contour_mask)
+
+            # Move binary mask to gpu and mask segmentation tensor
+            contour_mask = torch.tensor(contour_mask).cuda()
+            contour_seg = torch.where(
+                contour_mask > 0,
+                seg,
+                contour_mask.float())
+
+            # Average all 2d maps in segmentation tensor to find scores
+            scores = torch.sum(contour_seg, dim=(1,2)) / contour_mask_area
+
+            # Append 
+            instance_dict = {
+                "category_id": torch.argmax(scores).item(),
+                "segmentation": contour_mask.cpu().numpy(),
+                "score": torch.max(scores).item()
+            }
+            instances.append(instance_dict)
+    
+    return instances

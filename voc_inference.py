@@ -86,7 +86,7 @@ def setup_model(device):
     pretrained_dict = torch.load(
         os.path.join(
             cfg.PRETRAINED_PATH,
-            "trained_model.pth"))
+            "deeplabv3plus_multitask_xception_VOC2012_epoch40_final_highweight.pth"))
 
     # Get rid of the word "module" in keys,
     # since this model is not being used with dataparallel anymore
@@ -121,6 +121,8 @@ def inference():
     end = torch.cuda.Event(enable_timing=True)
 
     model.eval()
+    timing_avg = []
+
     with torch.no_grad():
 
         softmax = nn.Softmax2d()
@@ -167,13 +169,13 @@ def inference():
             seg = torch.unsqueeze(seg, 0)
             dist = torch.unsqueeze(dist, 0)
 
-            #start.record()
+            start.record()
 
             predicted_seg, predicted_dist = model(inputs)
 
-            #end.record()
-            #torch.cuda.synchronize()
-            #print("model", start.elapsed_time(end))
+            end.record()
+            torch.cuda.synchronize()
+            print("model time", start.elapsed_time(end))
 
             # rescale predictions to original size
             predicted_seg = F.interpolate(
@@ -203,46 +205,57 @@ def inference():
                         .zero_()
                     pred_seg_onehot = pred_seg_onehot.scatter(0, pred_seg, 1)
 
-                    #tic = timeit.default_timer()
+                    tic = timeit.default_timer()
 
                     instances = utils.postprocess(pred_seg_onehot, pred_dist, energy_cut=0)
 
-                    #toc = timeit.default_timer()
-                    #print("TOTAL postprocessing time: %.2f" %((toc-tic)*1000))
+                    toc = timeit.default_timer()
+                    print("TOTAL postprocessing time: %.2f" %((toc-tic)*1000))
 
-                    for instance in instances:
-                        # encoded bytestring in mask needs to be converted to ascii
-                        encoded_mask = mask.encode(np.asfortranarray(instance["mask"]))
-                        encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")
-                        instance_dict = {
-                            "image_id": img_id,
-                            "category_id": int(np.argmax(instance["scores"])),
-                            "segmentation": encoded_mask,
-                            "score": max(instance["scores"])
-                        }
-                        json_data.append(instance_dict)
+                    if instances:
+                        for instance in instances:
+                            # encoded bytestring in mask needs to be converted to ascii
+                            encoded_mask = mask.encode(np.asfortranarray(instance["mask"]))
+                            encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")
+                            instance_dict = {
+                                "image_id": img_id,
+                                "category_id": int(np.argmax(instance["scores"])),
+                                "segmentation": encoded_mask,
+                                "score": max(instance["scores"])
+                            }
+                            json_data.append(instance_dict)
 
             else:
                 # use actual predictions from neural network
                 for pred_seg, pred_dist in zip(predicted_seg, predicted_dist):
-                    
-                    instances = utils.postprocess(pred_seg, pred_dist, energy_cut=1)
 
-                    for instance in instances:
-                        # encoded bytestring in mask needs to be converted to ascii
-                        encoded_mask = mask.encode(np.asfortranarray(instance["mask"]))
-                        encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")
-                        instance_dict = {
-                            "image_id": img_id,
-                            "category_id": int(np.argmax(instance["scores"])),
-                            "segmentation": encoded_mask,
-                            "score": max(instance["scores"])
-                        }
-                        json_data.append(instance_dict)
+                    tic = timeit.default_timer()
+                    
+                    torch.cuda.synchronize()
+                    instances = utils.postprocess_2(pred_seg, pred_dist, energy_cut=1)
+
+                    torch.cuda.synchronize()
+                    toc = timeit.default_timer()
+                    timing_avg.append((toc-tic) * 1000)
+                    print("Cumulative avg pp time: %.2f" %(sum(timing_avg)/len(timing_avg)))
+
+
+                    if instances:
+                        for instance in instances:
+
+                            # encoded bytestring in mask needs to be converted to ascii
+                            encoded_mask = mask.encode(np.asfortranarray(instance["segmentation"]))
+                            encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")
+                            instance["segmentation"] = encoded_mask
+
+                            # Add image id to instance dictionary
+                            instance["image_id"] = img_id
+
+                            json_data.append(instance)
 
 
     # Write results to json
-    with open("COCO_style_results/voc2012_val_deeplab.json", 'w') as f:
+    with open("COCO_style_results/voc2012_val_deeplab_highweight.json", 'w') as f:
         json.dump(json_data, f)
 
 
