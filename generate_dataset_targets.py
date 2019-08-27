@@ -11,18 +11,22 @@ from config.config import VOCConfig
 
 cfg = VOCConfig()
 
+
 class DistanceTransform(object):
     """
-    Take a directory of pictures and generate a    new directory
+    Take a directory of pictures and generate a new directory
     with distance transformed pictures.
     The distance transform converts the image to a representation where
     all the pixel values represent the distance of that pixel from the closest
     boundary pixel.
+    It optionally generates images with the gradient directions as well.
 
     Args:
         - img_dir (string): path of directory with instance segmentation images.
         - imageset_f (string): path of file that contains list of images to convert.
         - transformed_dir (string): path of directory with transformed images.
+        - gradient_dir (string): path of directory with gradient direction images
+            (if None, no images will be generated).
         - img_extension (string, optional): default is .png,
             which is compatible with the PASCAL VOC images.
     """
@@ -31,10 +35,12 @@ class DistanceTransform(object):
         img_dir,
         imageset_f,
         transformed_dir,
+        gradient_dir=None,
         img_extension=".png"):
         self.img_dir = img_dir
         self.imageset_f = imageset_f
         self.transformed_dir = transformed_dir
+        self.gradient_dir = gradient_dir
         self.img_ext = img_extension
 
         if not os.path.isdir(img_dir):
@@ -142,6 +148,49 @@ class DistanceTransform(object):
             cv2.imwrite(os.path.join(
                 self.transformed_dir,
                 image_name + self.img_ext), distance)
+            
+
+            if self.gradient_dir:
+
+                # Blur image a bit to reduce jaggedness of gradient at 
+                # instance boundaries
+                distance = cv2.GaussianBlur(distance, (5,5), 0)
+                
+                # Get x and y gradients of distance image
+                x_grad = cv2.Sobel(distance, cv2.CV_64F, 1, 0, ksize=5)
+                y_grad = cv2.Sobel(distance, cv2.CV_64F, 0, 1, ksize=5)
+                
+                # Normalise direction vectors
+                magnitude = np.sqrt(x_grad ** 2 + y_grad ** 2)
+                x_grad = np.divide(
+                    x_grad,
+                    magnitude,
+                    out=np.zeros_like(x_grad),
+                    where=magnitude!=0)
+                y_grad = np.divide(
+                    y_grad,
+                    magnitude,
+                    out=np.zeros_like(y_grad),
+                    where=magnitude!=0)
+                
+                # Rescale them so that center is 0.5 and range is 0-1
+                # Also convert to uint8 (needed for writing image to png)
+                x_grad = ((x_grad / 2 + 0.5) * 255).astype("uint8")
+                y_grad = ((y_grad / 2 + 0.5) * 255).astype("uint8")
+
+                # Pack x, y, and 0 (blue channel)
+                blue_channel = np.zeros(
+                    (distance.shape[0], distance.shape[1]),
+                    dtype="uint8")
+                grad_direction = cv2.merge((blue_channel, y_grad, x_grad))
+
+                #cv2.imshow("grad", grad_direction)
+                #cv2.waitKey(0)
+
+                cv2.imwrite(os.path.join(
+                    self.gradient_dir,
+                    image_name + self.img_ext), grad_direction)
+
         
         print("Progress: %d/%d images..."
               %(len(os.listdir(self.transformed_dir)), len(self.images)),
@@ -154,5 +203,6 @@ if __name__ == "__main__":
 
     w = DistanceTransform(root + "SegmentationObject",
                             root + "ImageSets/Segmentation/trainval.txt",
-                            root + "DistanceTransform")
+                            root + "DistanceTransform",
+                            root + "DTGradientDirection")
     w.generate(n_jobs=16)
