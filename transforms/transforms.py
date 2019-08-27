@@ -23,7 +23,7 @@ class ColourJitter(object):
         self.hue = hue
 
     def __call__(self, sample):
-        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        img, seg, dist, grad = sample["image"], sample["seg"], sample["dist"], sample["grad"]
         
         img = T.ColorJitter(
             self.brightness,
@@ -31,7 +31,7 @@ class ColourJitter(object):
             self.saturation,
             self.hue)(img)
 
-        return {"image": img, "seg": seg, "dist": dist}
+        return {"image": img, "seg": seg, "dist": dist, "grad": grad}
 
 
 class Normalise(object):
@@ -49,10 +49,11 @@ class Normalise(object):
         self.inplace = inplace
     
     def __call__(self, sample):
-        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        img, seg, dist, grad = sample["image"], sample["seg"], sample["dist"], sample["grad"]
+
         img = F.normalize(img, self.mean, self.std, self.inplace)
 
-        return {"image": img, "seg": seg, "dist": dist}
+        return {"image": img, "seg": seg, "dist": dist, "grad": grad}
 
 
 class Quantise(object):
@@ -77,10 +78,11 @@ class Quantise(object):
             acc += level_widths[i]
 
     def __call__(self, sample):
-        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        img, seg, dist, grad = sample["image"], sample["seg"], sample["dist"], sample["grad"]
+
         dist = dist.point(self.lookup_table)
 
-        return {"image": img, "seg": seg, "dist": dist}
+        return {"image": img, "seg": seg, "dist": dist, "grad": grad}
 
 
 class RandomHorizontalFlip(object):
@@ -94,14 +96,15 @@ class RandomHorizontalFlip(object):
         self.p = p
     
     def __call__(self, sample):
-        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        img, seg, dist, grad = sample["image"], sample["seg"], sample["dist"], sample["grad"]
 
         if random.random() > self.p:
             img = F.hflip(img)
             seg = F.hflip(seg)
             dist = F.hflip(dist)
+            grad = F.hflip(grad)
 
-        return {"image": img, "seg": seg, "dist": dist}
+        return {"image": img, "seg": seg, "dist": dist, "grad": grad}
 
 
 class RandomResizedCrop(object):
@@ -121,14 +124,15 @@ class RandomResizedCrop(object):
         self.ratio = ratio
     
     def __call__(self, sample):
-        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        img, seg, dist, grad = sample["image"], sample["seg"], sample["dist"], sample["grad"]
         i, j, h, w = T.RandomResizedCrop.get_params(img, self.scale, self.ratio)
 
         img = F.resized_crop(img, i, j, h, w, self.size, Image.BILINEAR)
         seg = F.resized_crop(seg, i, j, h, w, self.size, Image.NEAREST)
         dist = F.resized_crop(dist, i, j, h, w, self.size, Image.NEAREST)
+        grad = F.resized_crop(grad, i, j, h, w, self.size, Image.NEAREST)
 
-        return {"image": img, "seg": seg, "dist": dist}
+        return {"image": img, "seg": seg, "dist": dist, "grad": grad}
 
 
 class Resize(object):
@@ -148,13 +152,14 @@ class Resize(object):
         self.size = size
 
     def __call__(self, sample):
-        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        img, seg, dist, grad = sample["image"], sample["seg"], sample["dist"], sample["grad"]
 
         img = F.resize(img, self.size, Image.BILINEAR)
         seg = F.resize(seg, self.size, Image.NEAREST)
         dist = F.resize(dist, self.size, Image.NEAREST)
+        grad = F.resize(grad, self.size, Image.NEAREST)
 
-        return {"image": img, "seg": seg, "dist": dist}
+        return {"image": img, "seg": seg, "dist": dist, "grad": grad}
 
 
 class ToTensor(object):
@@ -163,10 +168,11 @@ class ToTensor(object):
     """
 
     def __call__(self, sample):
-        img, seg, dist = sample["image"], sample["seg"], sample["dist"]
+        img, seg, dist, grad = sample["image"], sample["seg"], sample["dist"], sample["grad"]
 
         img = F.to_tensor(img)
         seg = F.to_tensor(seg)
         dist = F.to_tensor(dist)
+        grad = F.to_tensor(grad)
 
-        return {"image": img, "seg": seg, "dist": dist}
+        return {"image": img, "seg": seg, "dist": dist, "grad": grad}
