@@ -84,7 +84,8 @@ class VOCDualTask(Dataset):
             "image": sample["image"],
             "seg": sample["seg"],
             "dist": sample["dist"],
-            "grad": sample["grad"]
+            # Get rid of blue channel (its empty)
+            "grad": sample["grad"][0:2,:,:]
         }
 
         return indexed_sample
