@@ -5,50 +5,45 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def mean_squared_angular_loss(predicted, target):
+class MeanSquaredAngularLoss(torch.nn.Module):
     """
-    Implement squared angular loss
+    Calculate mean squared angular loss between targets and predictions.
     """
 
-    # Normalise vectors and make them always slightly less than 1
-    # to avoid the loss being exactly zero
-    #predicted = torch.mul(F.normalize(predicted, dim=1), 0.99999)
-    #target = torch.mul(F.normalize(target, dim=1), 0.99999)
+    def __init__(self):
+        super(MeanSquaredAngularLoss, self).__init__()
+        self.cos_similarity = nn.CosineSimilarity()
 
-    # Initialise cosine similarity
-    # NOTE: it doesn't need the vectors to be normalised
-    cos_distance = nn.CosineSimilarity()
+    def forward(self, predicted, target):
+        return self._mean_squared_angular_loss(predicted, target)
 
-    # Calculate angular distance
-    loss = torch.div(torch.acos(cos_distance(predicted, target)), math.pi)
-    
-    
-    print(cos_distance(predicted, target))
-    print(torch.acos(cos_distance(predicted, target)))
-    print(loss)
+    def _mean_squared_angular_loss(self, predicted, target):
 
-    # Calculate mean squared loss
-    mean_squared_loss = torch.mean(torch.pow(loss, 2))
+        # Calculate angular distance
+        # NOTE: the gradient of acos is not defined at +1 and -1, but
+        # cos_similarity returns values in the interval [-1,+1].Scale it down just a bit to avoid nan.
+        loss = torch.acos(self.cos_similarity(predicted, target) * 0.9999)
 
-    return mean_squared_loss
+        # Calculate mean squared loss
+        mean_squared_loss = torch.mean(torch.pow(loss, 2))
 
-    
-
-
+        return mean_squared_loss
 
 
 
 if __name__ == "__main__":
     
     target = torch.tensor([
-        [[[0., 0.]],[[1., 1.]]],
+        [[[-70.]],[[0.]]],
         #[[[1., 1.]],[[0., 0.]]]
     ])
     pred = torch.tensor([
-        [[[1., 1.]],[[0., 0.]]], 
+        [[[0.]],[[0.]]], 
         #[[[2., 2.]],[[0., 0.]]]
     ])
 
+    msa = MeanSquaredAngularLoss()
+
     print(target.shape, pred.shape)
 
-    print(mean_squared_angular_loss(pred, target))
+    print(msa(pred, target))
