@@ -254,3 +254,12 @@ class Xception(nn.Module):
 
     def get_layers(self):
         return self.layers
+
+
+if __name__ == "__main__":
+
+    model = Xception(16)
+    
+    # Print number of model parameters
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Number of learnable parameters:", n_params)

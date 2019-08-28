@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-# from models.sync_batchnorm import nn.SynchronizedBatchNorm2d
 
 class ASPP(nn.Module):
 	
@@ -64,7 +63,15 @@ class ASPP(nn.Module):
 		global_feature = F.interpolate(global_feature, (row,col), None, 'bilinear', True)
 		
 		feature_cat = torch.cat([conv1x1, conv3x3_1, conv3x3_2, conv3x3_3, global_feature], dim=1)
-#		feature_cat = torch.cat([conv1x1, conv3x3_1, conv3x3_2, conv3x3_3], dim=1)
 		result = self.conv_cat(feature_cat)
+
 		return result
 
+
+if __name__ == "__main__":
+
+    model = ASPP(2048, 512)
+    
+    # Print number of model parameters
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Number of learnable parameters:", n_params)
