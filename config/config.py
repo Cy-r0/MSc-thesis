@@ -50,10 +50,10 @@ class VOCConfig(object):
             19: "train",
             20: "tvmonitor"
         }
-        self.N_CLASSES = len(self.CLASSES) # TODO: change back to 21
+        self.N_CLASSES = len(self.CLASSES)
         # NOTE: I dont recommend setting the width of the lowest level to 1 pixel,
         # because findcontours() can leak through it
-        self.LEVEL_WIDTHS = [2,3,4,6,8,11,14,18,24]
+        self.LEVEL_WIDTHS = [1,1,2,6,8,12,15,25,39]
         self.N_ENERGY_LEVELS = len(self.LEVEL_WIDTHS) + 1
 
 
@@ -78,7 +78,7 @@ class VOCConfig(object):
         self.TRAIN_BATCH_SIZE = 4
         self.TRAIN_EPOCHS = 40
         self.TRAIN_LR = 0.06
-        self.TRAIN_MOMENTUM = 0.5
+        self.TRAIN_MOMENTUM = 0.7
         self.TRAIN_POWER = 0.9
 
         self.ADJUST_LR = True
