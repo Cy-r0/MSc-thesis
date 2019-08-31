@@ -73,7 +73,7 @@ def normalise_confusion_mat(confusion_mat):
     return normalised
 
 
-def postprocess(seg, dist, energy_cut, min_area=80, debug=False):
+def postprocess_old(seg, dist, energy_cut, min_area=80, debug=False):
     """
     Extract object instances from neural network outputs (seg and dist).
     Current pipeline:
@@ -246,11 +246,9 @@ def show(img):
         plt.imshow(npimg, interpolation="nearest")
 
 
-def postprocess_2(seg, dist, energy_cut, min_area=120, debug=False):
+def postprocess(seg, dist, energy_cut, min_area=960, debug=False):
     """
     Extract object instances from neural network outputs (seg and dist).
-    Current pipeline:
-        TODO: write pipeline
 
     Args:
         - seg (3D float ndarray).
@@ -330,6 +328,18 @@ def postprocess_2(seg, dist, energy_cut, min_area=120, debug=False):
             contour_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
             cv2.drawContours(contour_mask, [contour], -1, 255, -1)
             contour_mask_area = cv2.countNonZero(contour_mask)
+
+            if debug:
+                cv2.imshow("c mask", contour_mask)
+                cv2.waitKey(0)
+
+            # Dilate binary mask to recover lower energy levels
+            dilation_k = np.ones((21,21), np.uint8)
+            contour_mask = cv2.dilate(contour_mask, dilation_k, iterations=1)
+
+            if debug:
+                cv2.imshow("c mask dilated", contour_mask)
+                cv2.waitKey(0)
 
             # Move binary mask to gpu and mask segmentation tensor
             contour_mask = torch.tensor(contour_mask).cuda()

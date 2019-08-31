@@ -77,8 +77,8 @@ class VOCConfig(object):
         # so the total batch size will be BATCH_SIZE * GPUS
         self.TRAIN_BATCH_SIZE = 4
         self.TRAIN_EPOCHS = 40
-        self.TRAIN_LR = 0.06
-        self.TRAIN_MOMENTUM = 0.7
+        self.TRAIN_LR = 0.005
+        self.TRAIN_MOMENTUM = 0.9
         self.TRAIN_POWER = 0.9
 
         self.ADJUST_LR = True

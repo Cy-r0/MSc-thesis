@@ -46,7 +46,7 @@ class Deeplabv3plus_multitask(nn.Module):
             dim_out=ASPP_OUT_CH, 
             rate=16//OUTPUT_STRIDE,
             bn_momentum=BN_MOMENTUM)
-        self.dropout = nn.Dropout(0.4)
+        self.dropout = nn.Dropout(0.5)
         self.upsample_latent = nn.UpsamplingBilinear2d(scale_factor=OUTPUT_STRIDE//4)
 
         # Semantic branch
@@ -66,7 +66,7 @@ class Deeplabv3plus_multitask(nn.Module):
                 ASPP_OUT_CH, 3, 1, padding=1, bias=True),
             nn.BatchNorm2d(ASPP_OUT_CH, momentum=BN_MOMENTUM),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
+            nn.Dropout(0.5),
             nn.Conv2d(ASPP_OUT_CH, ASPP_OUT_CH, 3, 1, padding=1, bias=True),
             nn.BatchNorm2d(ASPP_OUT_CH, momentum=BN_MOMENTUM),
             nn.ReLU(inplace=True),
@@ -90,7 +90,7 @@ class Deeplabv3plus_multitask(nn.Module):
             ASPP_OUT_CH, 3, 1, padding=1, bias=True),
             nn.BatchNorm2d(ASPP_OUT_CH, momentum=BN_MOMENTUM),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
+            nn.Dropout(0.5),
             nn.Conv2d(ASPP_OUT_CH, ASPP_OUT_CH, 3, 1, padding=1, bias=True),
             nn.BatchNorm2d(ASPP_OUT_CH, momentum=BN_MOMENTUM),
             nn.ReLU(inplace=True),

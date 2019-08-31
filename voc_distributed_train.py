@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sn
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import jaccard_score as IoU
 from tensorboardX import SummaryWriter
 import timeit
 import torch
@@ -37,15 +36,46 @@ import utils.utils as utils
 
 cfg = VOCConfig()
 
+# Fix all seeds for reproducibility
+seed = 777
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+#torch.backends.cudnn.deterministic = True
+#torch.backends.cudnn.benchmark = False
 
-#os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
-def calc_iou(target, prediction):
+def calc_iou(confusion_matrix):
+    """
+    Calculates per-class IoUs from numpy confusion matrix.
+    """
+    class_iou = [0] * len(confusion_matrix)
 
-    target = target.cpu().numpy().reshape(-1)
-    prediction = prediction.cpu().numpy().reshape(-1)
+    for i in range(len(confusion_matrix)):
 
-    return IoU(target, prediction, average="macro")
+        intersection = confusion_matrix[i,i]
+        union = np.sum(confusion_matrix[i,:]) + np.sum(confusion_matrix[:,i]) - intersection
+    
+        if union == 0:
+            warnings.warn("IoU calculation: union is zero!")
+            class_iou[i] = 0
+        else:
+            class_iou[i] = intersection / union
+    
+    return class_iou
+
+
+def calc_confusion_matrix(target, prediction, labels):
+    """
+    Computes confusion matrix. NOTE: predictions need to be already argmaxed
+    """
+
+    target = target.flatten()
+    prediction = prediction.flatten()
+
+    conf_matrix = confusion_matrix(target, prediction, labels=labels)
+    
+    return conf_matrix
 
 
 def setup_dataloaders(rank):
@@ -65,7 +95,7 @@ def setup_dataloaders(rank):
     # Datasets
     VOC_train = VOCDualTask(
         cfg.DSET_ROOT,
-        image_set="train_75perc",
+        image_set="trainval",
         transform=transform)
     VOC_val = VOCDualTask(
         cfg.DSET_ROOT,
@@ -110,7 +140,7 @@ def setup_model(rank):
     model = Deeplabv3plus_multitask(
         seg_classes=cfg.N_CLASSES,
         dist_classes=cfg.N_ENERGY_LEVELS,
-        third_branch=True)
+        third_branch=False)
     # Convert batchnorm to synchronised batchnorm
     model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.to(rank)
@@ -235,14 +265,6 @@ def train(rank, world_size):
     # Specify GPU to send this process to
     torch.cuda.set_device(rank)
 
-    # Fix all seeds for reproducibility
-    seed = 777
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    #torch.backends.cudnn.deterministic = True
-    #torch.backends.cudnn.benchmark = False
-
     # Dataloaders
     loader_train, loader_val = setup_dataloaders(rank)
 
@@ -258,10 +280,22 @@ def train(rank, world_size):
     # Set losses for semantic, distance and gradient direction
     seg_criterion = nn.CrossEntropyLoss(ignore_index=255)
 
-    weights = torch.tensor([6, 3, 1, 1, 1, 1, 1, 1, 0.6, 0.3]).to(rank)
+    total_px = cfg.DATA_RESCALE ** 2
+    weights = torch.tensor([
+        total_px / 2789,
+        total_px / 6636,
+        total_px / 10678,
+        total_px / 26170,
+        total_px / 27594,
+        total_px / 33966,
+        total_px / 33467,
+        total_px / 40680,
+        total_px / 39469,
+        total_px / 40696
+    ]).to(rank)
     dist_criterion = nn.CrossEntropyLoss(weight=weights)
 
-    grad_criterion = MeanSquaredAngularLoss()
+    #grad_criterion = MeanSquaredAngularLoss()
 
 
     # Optimiser setup
@@ -282,27 +316,22 @@ def train(rank, world_size):
             train_loss = 0.
             train_seg_loss = 0.
             train_dist_loss = 0.
-            train_grad_loss = 0.
-            train_seg_acc = 0.
-            train_dist_acc = 0.
-            train_seg_iou = 0.
-            train_dist_iou = 0.
+            #train_grad_loss = 0.
 
-        # Only initialise confusion matrices when they're going to be logged
-        # Also, only log from process 0
-        if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG and rank == 0:
-            train_seg_confusion = np.zeros(
-                (cfg.N_CLASSES, cfg.N_CLASSES),
-                dtype="float")
-            train_dist_confusion = np.zeros(
-                (cfg.N_ENERGY_LEVELS, cfg.N_ENERGY_LEVELS),
-                dtype="float")
-            val_seg_confusion = np.zeros(
-                (cfg.N_CLASSES, cfg.N_CLASSES),
-                dtype="float")
-            val_dist_confusion = np.zeros(
-                (cfg.N_ENERGY_LEVELS, cfg.N_ENERGY_LEVELS),
-                dtype="float")
+            if cfg.LOG:
+                # Initialise confusion matrices
+                train_seg_confusion = np.zeros(
+                    (cfg.N_CLASSES, cfg.N_CLASSES),
+                    dtype="float")
+                train_dist_confusion = np.zeros(
+                    (cfg.N_ENERGY_LEVELS, cfg.N_ENERGY_LEVELS),
+                    dtype="float")
+                val_seg_confusion = np.zeros(
+                    (cfg.N_CLASSES, cfg.N_CLASSES),
+                    dtype="float")
+                val_dist_confusion = np.zeros(
+                    (cfg.N_ENERGY_LEVELS, cfg.N_ENERGY_LEVELS),
+                    dtype="float")
         
         # Initialise tqdm only on process 0
         if rank == 0:
@@ -319,7 +348,7 @@ def train(rank, world_size):
             train_dist = train_batch["dist"].mul(255).round().long().squeeze(1).to(rank)
 
             # gradient direction is not categorical, so no conversion
-            train_grad = train_batch["grad"].to(rank)
+            #train_grad = train_batch["grad"].to(rank)
 
             if cfg.ADJUST_LR:
                 lr = utils.adjust_lr(
@@ -333,13 +362,13 @@ def train(rank, world_size):
 
             optimiser.zero_grad()
 
-            train_predicted_seg, train_predicted_dist, train_predicted_grad = model(train_inputs)
+            train_predicted_seg, train_predicted_dist = model(train_inputs)
 
             # Calculate losses
             seg_loss = seg_criterion(train_predicted_seg, train_seg)
             dist_loss = dist_criterion(train_predicted_dist, train_dist)
-            grad_loss = grad_criterion(train_predicted_grad, train_grad)
-            loss = seg_loss + dist_loss + grad_loss
+            #grad_loss = grad_criterion(train_predicted_grad, train_grad)
+            loss = seg_loss + dist_loss  # + grad_loss
             loss.backward()
             optimiser.step()
 
@@ -350,40 +379,22 @@ def train(rank, world_size):
                 train_loss += loss.item()
                 train_seg_loss += seg_loss.item()
                 train_dist_loss += dist_loss.item()
-                train_grad_loss += grad_loss.item()
+                #train_grad_loss += grad_loss.item()
 
                 batch_pixels = cfg.DATA_RESCALE ** 2 * cfg.TRAIN_BATCH_SIZE
                 seg_argmax = torch.argmax(train_predicted_seg, dim=1)
                 dist_argmax = torch.argmax(train_predicted_dist, dim=1)
-                # Accumulate accuracies
-                train_seg_acc += torch.sum(train_seg == seg_argmax) \
-                    .float().div(batch_pixels)
-                train_dist_acc += torch.sum(train_dist == dist_argmax) \
-                    .float().div(batch_pixels)
-                # Accumulate IoUs
-                train_seg_iou += calc_iou(train_seg, seg_argmax)
-                train_dist_iou += calc_iou(train_dist, dist_argmax)
 
-                # Only calculate confusion matrices every few epochs
-                if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
-
-                    # Flatten labels and predictions and append
-                    total_seg_labels = train_seg.cpu().flatten()
-                    total_seg_predictions = seg_argmax.cpu().flatten()
-
-                    total_dist_labels = train_dist.cpu().flatten()
-                    total_dist_predictions = dist_argmax.cpu().flatten()
-
-                    # Accumulate confusion matrix 
-                    train_seg_confusion += confusion_matrix(
-                        total_seg_labels,
-                        total_seg_predictions,
+                if cfg.LOG and epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1:
+                    # Accumulate confusion matrices
+                    train_seg_confusion += calc_confusion_matrix(
+                        train_seg.cpu(),
+                        seg_argmax.cpu(),
                         labels=list(cfg.CLASSES.keys())
                         ) / cfg.TRAIN_BATCH_SIZE
-
-                    train_dist_confusion += confusion_matrix(
-                        total_dist_labels,
-                        total_dist_predictions,
+                    train_dist_confusion += calc_confusion_matrix(
+                        train_dist.cpu(),
+                        dist_argmax.cpu(),
                         labels=list(range(cfg.N_ENERGY_LEVELS))
                         ) / cfg.TRAIN_BATCH_SIZE
 
@@ -392,11 +403,7 @@ def train(rank, world_size):
             val_loss = 0.
             val_seg_loss = 0.
             val_dist_loss = 0.
-            val_grad_loss = 0.
-            val_seg_acc = 0.
-            val_dist_acc = 0.
-            val_seg_iou = 0.
-            val_dist_iou = 0.
+            #val_grad_loss = 0.
 
         # Initialise tqdm
         if rank == 0:
@@ -410,75 +417,51 @@ def train(rank, world_size):
                 val_inputs = val_batch["image"].to(rank)
                 val_seg = val_batch["seg"].mul(255).round().long().squeeze(1).to(rank)
                 val_dist = val_batch["dist"].mul(255).round().long().squeeze(1).to(rank)
-                val_grad = val_batch["grad"].to(rank)
+                #val_grad = val_batch["grad"].to(rank)
 
-                val_predicted_seg, val_predicted_dist, val_predicted_grad = model(val_inputs)
+                val_predicted_seg, val_predicted_dist = model(val_inputs)
 
                 # Calculate losses
                 if rank == 0:
                     seg_loss = seg_criterion(val_predicted_seg, val_seg)
                     dist_loss = dist_criterion(val_predicted_dist, val_dist)
-                    grad_loss = grad_criterion(val_predicted_grad, val_grad)
-                    loss = seg_loss + dist_loss + grad_loss
+                    #grad_loss = grad_criterion(val_predicted_grad, val_grad)
+                    loss = seg_loss + dist_loss #+ grad_loss
                     val_loss += loss.item()
                     val_seg_loss += seg_loss.item()
                     val_dist_loss += dist_loss.item()
-                    val_grad_loss += grad_loss.item()
+                    #val_grad_loss += grad_loss.item()
 
                     batch_pixels = cfg.DATA_RESCALE ** 2 * cfg.VAL_BATCH_SIZE
                     seg_argmax = torch.argmax(val_predicted_seg, dim=1)
                     dist_argmax = torch.argmax(val_predicted_dist, dim=1)
-                    # Accumulate accuracies
-                    val_seg_acc += torch.sum(val_seg == seg_argmax) \
-                        .float().div(batch_pixels)
-                    val_dist_acc += torch.sum(val_dist == dist_argmax) \
-                        .float().div(batch_pixels)
-                    # Accumulate ious
-                    val_seg_iou += calc_iou(val_seg, seg_argmax)
-                    val_dist_iou += calc_iou(val_dist, dist_argmax)
 
-                    if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1 and cfg.LOG:
-                        # Flatten labels and predictions and append
-                        total_seg_labels = val_seg.cpu().flatten()
-                        total_seg_predictions = seg_argmax.cpu().flatten()
-
-                        total_dist_labels = val_dist.cpu().flatten()
-                        total_dist_predictions = dist_argmax.cpu().flatten()
-
-                        # Accumulate confusion matrix 
-                        val_seg_confusion += confusion_matrix(
-                            total_seg_labels,
-                            total_seg_predictions,
+                    if cfg.LOG and epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1:
+                        # Accumulate confusion matrices
+                        val_seg_confusion += calc_confusion_matrix(
+                            val_seg.cpu(),
+                            seg_argmax.cpu(),
                             labels=list(cfg.CLASSES.keys())
-                            ) / cfg.VAL_BATCH_SIZE
-
-                        val_dist_confusion += confusion_matrix(
-                            total_dist_labels,
-                            total_dist_predictions,
+                            ) / cfg.TRAIN_BATCH_SIZE
+                        val_dist_confusion += calc_confusion_matrix(
+                            val_dist.cpu(),
+                            dist_argmax.cpu(),
                             labels=list(range(cfg.N_ENERGY_LEVELS))
-                            ) / cfg.VAL_BATCH_SIZE
+                            ) / cfg.TRAIN_BATCH_SIZE
 
         # Only print info and log to tensorboard in process 0
         if rank == 0:
-            # Average training losses, acc and iou on all batches
+            # Average training losses on all batches
             train_loss /= len(loader_train)
             train_seg_loss /= len(loader_train)
             train_dist_loss /= len(loader_train)
-            train_grad_loss /= len(loader_train)
-            train_seg_acc /= len(loader_train)
-            train_dist_acc /= len(loader_train)
-            train_seg_iou /= len(loader_train)
-            train_dist_iou /= len(loader_train)
+            #train_grad_loss /= len(loader_train)
 
-            # Average validation losses, acc and iou on batches
+            # Average validation losses on batches
             val_loss /= len(loader_val)
             val_seg_loss /= len(loader_val)
             val_dist_loss /= len(loader_val)
-            val_grad_loss /= len(loader_val)
-            val_seg_acc /= len(loader_val)
-            val_dist_acc /= len(loader_val)
-            val_seg_iou /= len(loader_val)
-            val_dist_iou /= len(loader_val)
+            #val_grad_loss /= len(loader_val)
 
             print("Epoch: %d/%d\ti: %d\tlr: %g\ttrain_loss: %g\tval_loss: %g\n"
                 % (epoch+1, cfg.TRAIN_EPOCHS, i, lr, train_loss, val_loss))
@@ -503,43 +486,40 @@ def train(rank, world_size):
                         "val_dist_loss": val_dist_loss
                     },
                     epoch)
-                tbX_logger.add_scalars(
-                    "grad_loss", {
-                        "train_grad_loss": train_grad_loss,
-                        "val_grad_loss": val_grad_loss
-                    },
-                    epoch)
-                tbX_logger.add_scalars(
-                    "seg_acc", {
-                        "train_seg_acc": train_seg_acc,
-                        "val_seg_acc": val_seg_acc
-                    },
-                    epoch)
-                tbX_logger.add_scalars(
-                    "dist_acc", {
-                        "train_dist_acc": train_dist_acc,
-                        "val_dist_acc": val_dist_acc
-                    },
-                    epoch)
-                tbX_logger.add_scalars(
-                    "seg_iou", {
-                        "train_seg_iou": train_seg_iou,
-                        "val_seg_iou": val_seg_iou
-                    },
-                    epoch)
-                tbX_logger.add_scalars(
-                    "dist_iou", {
-                        "train_dist_iou": train_dist_iou,
-                        "val_dist_iou": val_dist_iou
-                    },
-                    epoch)                                 
+                #tbX_logger.add_scalars(
+                #    "grad_loss", {
+                #        "train_grad_loss": train_grad_loss,
+                #        "val_grad_loss": val_grad_loss
+                #    },
+                #   epoch)
+                                                 
                 tbX_logger.add_scalar("lr", lr, epoch)
 
                 # it seems like tensorboard doesn't like saving a lot of images,
-                # so log images only at last epoch
+                # so log images only every few epochs
                 if epoch % 20 == 0 or epoch == cfg.TRAIN_EPOCHS - 1:
 
-                    # Convert training data for plotting
+
+                    # Calculate IoUs from confusion matrices
+                    train_seg_iou = calc_iou(train_seg_confusion)
+                    train_dist_iou = calc_iou(train_dist_confusion)
+                    val_seg_iou = calc_iou(val_seg_confusion)
+                    val_dist_iou = calc_iou(val_dist_confusion)
+                    
+                    tbX_logger.add_scalars(
+                        "seg_iou", {
+                            "train_seg_iou": np.mean(train_seg_iou),
+                            "val_seg_iou": np.mean(val_seg_iou)
+                        },
+                        epoch)
+                    tbX_logger.add_scalars(
+                        "dist_iou", {
+                            "train_dist_iou": np.mean(train_dist_iou),
+                            "val_dist_iou": np.mean(val_dist_iou)
+                        },
+                        epoch)
+
+                    # Convert training images for plotting
                     train_input_tb = make_grid(train_inputs).cpu().numpy()
                     train_seg_tb = make_grid(utils.colormap(
                         train_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
@@ -558,16 +538,16 @@ def train(rank, world_size):
                         cfg.DATA_RESCALE,
                         cfg.DATA_RESCALE).to(rank)
                     # Normalise grad vectors for image drawing
-                    grad_norm = torch.norm(train_predicted_grad, p=2, dim=1, keepdim=True)
-                    train_predicted_grad = train_predicted_grad.div(grad_norm)
-                    train_grad_tb = make_grid(torch.cat(
-                        (train_grad, blue_channel), 
-                        dim=1)).cpu().numpy()
-                    train_grad_prediction_tb = make_grid(torch.cat(
-                        (train_predicted_grad, blue_channel),
-                        dim=1)).cpu().detach().numpy()                          
+                    #grad_norm = torch.norm(train_predicted_grad, p=2, dim=1, keepdim=True)
+                    #train_predicted_grad = train_predicted_grad.div(grad_norm)
+                    #train_grad_tb = make_grid(torch.cat(
+                    #    (train_grad, blue_channel), 
+                    #    dim=1)).cpu().numpy()
+                    #train_grad_prediction_tb = make_grid(torch.cat(
+                    #    (train_predicted_grad, blue_channel),
+                    #    dim=1)).cpu().detach().numpy()                          
 
-                    # Convert val data for plotting
+                    # Convert val images for plotting
                     val_input_tb = make_grid(val_inputs).cpu().numpy()
                     val_seg_tb = make_grid(utils.colormap(
                         val_seg.float().div(cfg.N_CLASSES).unsqueeze(1).cpu())).numpy()
@@ -580,14 +560,14 @@ def train(rank, world_size):
                         torch.argmax(val_predicted_dist, dim=1).float() \
                         .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
                     # Normalise grad vectors for image drawing
-                    grad_norm = torch.norm(val_predicted_grad, p=2, dim=1, keepdim=True)
-                    val_predicted_grad = val_predicted_grad.div(grad_norm)
-                    val_grad_tb = make_grid(torch.cat(
-                        (val_grad, blue_channel), 
-                        dim=1)).cpu().numpy()
-                    val_grad_prediction_tb = make_grid(torch.cat(
-                        (val_predicted_grad, blue_channel),
-                        dim=1)).cpu().detach().numpy()                          
+                    #grad_norm = torch.norm(val_predicted_grad, p=2, dim=1, keepdim=True)
+                    #val_predicted_grad = val_predicted_grad.div(grad_norm)
+                    #val_grad_tb = make_grid(torch.cat(
+                    #    (val_grad, blue_channel), 
+                    #    dim=1)).cpu().numpy()
+                    #val_grad_prediction_tb = make_grid(torch.cat(
+                    #    (val_predicted_grad, blue_channel),
+                    #    dim=1)).cpu().detach().numpy()                          
 
                     # Training images
                     tbX_logger.add_image("train_input", train_input_tb, epoch)
@@ -601,11 +581,11 @@ def train(rank, world_size):
                         "train_dist_prediction",
                         train_dist_prediction_tb,
                         epoch)
-                    tbX_logger.add_image("train_grad", train_grad_tb, epoch)
-                    tbX_logger.add_image(
-                        "train_grad_prediction",
-                        train_grad_prediction_tb,
-                        epoch)
+                    #tbX_logger.add_image("train_grad", train_grad_tb, epoch)
+                    #tbX_logger.add_image(
+                    #    "train_grad_prediction",
+                    #    train_grad_prediction_tb,
+                    #    epoch)
                     
                     # Validation images
                     tbX_logger.add_image("val_input", val_input_tb, epoch)
@@ -619,11 +599,11 @@ def train(rank, world_size):
                         "val_dist_prediction",
                         val_dist_prediction_tb,
                         epoch)
-                    tbX_logger.add_image("val_grad", val_grad_tb, epoch)
-                    tbX_logger.add_image(
-                        "val_grad_prediction",
-                        val_grad_prediction_tb,
-                        epoch)
+                    #tbX_logger.add_image("val_grad", val_grad_tb, epoch)
+                    #tbX_logger.add_image(
+                    #    "val_grad_prediction",
+                    #    val_grad_prediction_tb,
+                    #    epoch)
 
                     # Divide unnormalised matrices
                     train_seg_confusion /= len(loader_train)
