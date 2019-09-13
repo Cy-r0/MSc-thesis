@@ -1,0 +1,13 @@
+train_dist_iou = 0.4407
+val_dist_iou = 0.3285
+
+train_seg_iou = 0.8695
+val_seg_iou = 0.5738
+
+n_params = 55774287
+avg_forward_time = 38.79
+time_to_train = 3h 19m 5s
+
+
+
+

@@ -21,7 +21,8 @@ class MeanSquaredAngularLoss(torch.nn.Module):
 
         # Calculate angular distance
         # NOTE: the gradient of acos is not defined at +1 and -1, but
-        # cos_similarity returns values in the interval [-1,+1].Scale it down just a bit to avoid nan.
+        # cos_similarity returns values in the interval [-1,+1].Scale it down
+        # just a bit to avoid nan.
         loss = torch.acos(self.cos_similarity(predicted, target) * 0.9999)
 
         # Calculate mean squared loss
@@ -34,11 +35,11 @@ class MeanSquaredAngularLoss(torch.nn.Module):
 if __name__ == "__main__":
     
     target = torch.tensor([
-        [[[-70.]],[[0.]]],
+        [[[-1.]],[[0.]]],
         #[[[1., 1.]],[[0., 0.]]]
     ])
     pred = torch.tensor([
-        [[[0.]],[[0.]]], 
+        [[[1.]],[[0.]]], 
         #[[[2., 2.]],[[0., 0.]]]
     ])
 

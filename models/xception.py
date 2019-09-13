@@ -149,7 +149,7 @@ class Xception(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, 3, 1, 1, bias=False)
         self.bn2 = nn.BatchNorm2d(64, momentum=bn_momentum, affine=True)
 
-        self.block1=Block(64 ,128, 2)
+        self.block1 = Block(64 ,128, 2)
         self.block2 = Block(128, 256, stride_list[0], inplace=False)
         self.block3 = Block(256, 728, stride_list[1])
 
@@ -175,13 +175,12 @@ class Xception(nn.Module):
         self.block19 = Block(728, 728, 1, atrous=[1*rate, 1*rate, 1*rate])
         
         self.block20=Block(728, 1024, stride_list[2], atrous=rate, grow_first=False)
-        #self.block12=Block(728,1024,2,2,start_with_relu=True,grow_first=False)
 
         self.conv3 = SeparableConv2d(1024, 1536, 3, 1, 1*rate, dilation=rate,
             activate_first=False)
         # self.bn3 = nn.BatchNorm2d(1536, momentum=bn_mom)
 
-        self.conv4 = SeparableConv2d(1536,1536, 3, 1, 1*rate, dilation=rate,
+        self.conv4 = SeparableConv2d(1536, 1536, 3, 1, 1*rate, dilation=rate,
             activate_first=False)
         # self.bn4 = nn.BatchNorm2d(1536, momentum=bn_mom)
 
@@ -217,7 +216,6 @@ class Xception(nn.Module):
 
         self.layers.append(self.block2.hook_layer)
         x = self.block3(x)
-        # self.layers.append(self.block3.hook_layer)
         x = self.block4(x)
         x = self.block5(x)
         x = self.block6(x)
@@ -235,7 +233,6 @@ class Xception(nn.Module):
         x = self.block18(x)
         x = self.block19(x)
         x = self.block20(x)   
-        # self.layers.append(self.block20.hook_layer)
 
         x = self.conv3(x)
         # x = self.bn3(x)

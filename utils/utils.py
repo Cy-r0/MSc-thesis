@@ -246,7 +246,7 @@ def show(img):
         plt.imshow(npimg, interpolation="nearest")
 
 
-def postprocess(seg, dist, energy_cut, min_area=960, debug=False):
+def postprocess(seg, dist, energy_cut, min_area=900, check_lowenergy=False, debug=True):
     """
     Extract object instances from neural network outputs (seg and dist).
 
@@ -304,11 +304,8 @@ def postprocess(seg, dist, energy_cut, min_area=960, debug=False):
     # Find contours. PERF: findContours is the most expensive function (3-20 ms)
     _, contours, hierarchy = cv2.findContours(
         binarised_seg,
-        cv2.RETR_LIST, #RETR_TREE,
+        cv2.RETR_TREE,
         cv2.CHAIN_APPROX_NONE)
-    # NOTE: EMERGENT BEHAVIOUR:
-    # the model seems to never predict a contour inside a contour,
-    # maybe you can exploit this by not checking for holes
     
     # Show thresholded segmentation
     if debug:
@@ -320,7 +317,7 @@ def postprocess(seg, dist, energy_cut, min_area=960, debug=False):
     instances = []
 
     # Iterate through contours
-    for contour in contours:
+    for c, contour in enumerate(contours):
 
         if cv2.contourArea(contour) >= min_area:
 
@@ -329,34 +326,68 @@ def postprocess(seg, dist, energy_cut, min_area=960, debug=False):
             cv2.drawContours(contour_mask, [contour], -1, 255, -1)
             contour_mask_area = cv2.countNonZero(contour_mask)
 
+            # Create binary mask for children contours
+            children_mask = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+
+            # Find first child
+            child_idx = hierarchy[0, c, 2]
+
+            # Overlay masks of all children
+            while child_idx != -1:
+                cv2.drawContours(children_mask, [contours[child_idx]], -1, 255, -1)
+                child_idx = hierarchy[0, child_idx, 0]
+                
+            # Subtract children mask from parent mask to preserve holes
+            contour_mask = cv2.bitwise_xor(contour_mask, children_mask)
+
             if debug:
                 cv2.imshow("c mask", contour_mask)
                 cv2.waitKey(0)
 
-            # Dilate binary mask to recover lower energy levels
-            dilation_k = np.ones((21,21), np.uint8)
-            contour_mask = cv2.dilate(contour_mask, dilation_k, iterations=1)
+            
+            # Check if contour contains only low energy levels
+            if check_lowenergy:
+                # You need to get rid of the perimeter of the mask
+                perimeter = np.zeros((dist.shape[0], dist.shape[1]), dtype="uint8")
+                cv2.drawContours(perimeter, [contour], -1, 255, 1)
+                mask_without_perimeter = cv2.bitwise_xor(perimeter, contour_mask)
+                # Mask distance with the mask without perimeter
+                dist_np = dist.cpu().numpy()
+                masked_dist = cv2.bitwise_and(dist_np, dist_np, mask=mask_without_perimeter)
 
-            if debug:
-                cv2.imshow("c mask dilated", contour_mask)
-                cv2.waitKey(0)
+                # Find which energy levels are inside the contour
+                energy_inside = np.unique(masked_dist)
+                contains_only_lower_levels = all(l <= energy_cut for l in energy_inside)
+            else:
+                contains_only_lower_levels = False
 
-            # Move binary mask to gpu and mask segmentation tensor
-            contour_mask = torch.tensor(contour_mask).cuda()
-            contour_seg = torch.where(
-                contour_mask > 0,
-                seg,
-                contour_mask.float())
+            # Ignore contours that only contain low energy
+            if not contains_only_lower_levels:
 
-            # Average all 2d maps in segmentation tensor to find scores
-            scores = torch.sum(contour_seg, dim=(1,2)) / contour_mask_area
+                # Dilate binary mask to recover lower energy levels
+                dilation_k = np.ones((21,21), np.uint8)
+                contour_mask = cv2.dilate(contour_mask, dilation_k, iterations=1)
 
-            # Append 
-            instance_dict = {
-                "category_id": torch.argmax(scores).item(),
-                "segmentation": contour_mask.cpu().numpy(),
-                "score": torch.max(scores).item()
-            }
-            instances.append(instance_dict)
+                if debug:
+                    cv2.imshow("c mask dilated", contour_mask)
+                    cv2.waitKey(0)
+
+                # Move binary mask to gpu and mask segmentation tensor
+                contour_mask = torch.tensor(contour_mask).cuda()
+                contour_seg = torch.where(
+                    contour_mask > 0,
+                    seg,
+                    contour_mask.float())
+
+                # Average all 2d maps in segmentation tensor to find scores
+                scores = torch.sum(contour_seg, dim=(1,2)) / contour_mask_area
+
+                # Append 
+                instance_dict = {
+                    "category_id": torch.argmax(scores).item(),
+                    "segmentation": contour_mask.cpu().numpy(),
+                    "score": torch.max(scores).item()
+                }
+                instances.append(instance_dict)
     
     return instances

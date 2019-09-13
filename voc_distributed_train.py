@@ -45,6 +45,7 @@ torch.manual_seed(seed)
 #torch.backends.cudnn.benchmark = False
 
 
+
 def calc_iou(confusion_matrix):
     """
     Calculates per-class IoUs from numpy confusion matrix.
@@ -95,7 +96,7 @@ def setup_dataloaders(rank):
     # Datasets
     VOC_train = VOCDualTask(
         cfg.DSET_ROOT,
-        image_set="trainval",
+        image_set="trainval_hole",
         transform=transform)
     VOC_val = VOCDualTask(
         cfg.DSET_ROOT,
@@ -135,12 +136,14 @@ def setup_model(rank):
     """
     Initialise model and load pretrained backbone weights.
     """
+    backbone = "resnet50"
     
     # Initialise model
     model = Deeplabv3plus_multitask(
         seg_classes=cfg.N_CLASSES,
         dist_classes=cfg.N_ENERGY_LEVELS,
-        third_branch=False)
+        third_branch=False,
+        backbone=backbone)
     # Convert batchnorm to synchronised batchnorm
     model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.to(rank)
@@ -149,10 +152,10 @@ def setup_model(rank):
             "GPUs found:", torch.cuda.device_count(),
             "\tGPUs used by all processes:", cfg.TRAIN_GPUS)
     # Wrap in distributed dataparallel
-    model = DistributedDataParallel(model, device_ids=[rank], output_device=rank)
+    model = DistributedDataParallel(model, device_ids=[rank], output_device=rank, find_unused_parameters=True)
     
-    # Load pretrained model weights only for backbone network
-    if cfg.USE_PRETRAINED:
+    # Load pretrained model weights only for backbone network, if backbone is xception
+    if cfg.USE_PRETRAINED and backbone == "xception":
         current_dict = model.state_dict()
         pretrained_dict = torch.load(os.path.join(
             cfg.PRETRAINED_PATH,
@@ -168,9 +171,6 @@ def setup_model(rank):
 
         if rank == 0:
             print("Loaded pretrained backbone.")
-
-    current_dict.update(pretrained_dict)
-    model.load_state_dict(current_dict)
     
     if rank == 0:
         # Print number of model parameters
@@ -368,7 +368,7 @@ def train(rank, world_size):
             seg_loss = seg_criterion(train_predicted_seg, train_seg)
             dist_loss = dist_criterion(train_predicted_dist, train_dist)
             #grad_loss = grad_criterion(train_predicted_grad, train_grad)
-            loss = seg_loss + dist_loss  # + grad_loss
+            loss = seg_loss + dist_loss # + grad_loss
             loss.backward()
             optimiser.step()
 
@@ -426,7 +426,7 @@ def train(rank, world_size):
                     seg_loss = seg_criterion(val_predicted_seg, val_seg)
                     dist_loss = dist_criterion(val_predicted_dist, val_dist)
                     #grad_loss = grad_criterion(val_predicted_grad, val_grad)
-                    loss = seg_loss + dist_loss #+ grad_loss
+                    loss = seg_loss + dist_loss # + grad_loss
                     val_loss += loss.item()
                     val_seg_loss += seg_loss.item()
                     val_dist_loss += dist_loss.item()
@@ -491,7 +491,7 @@ def train(rank, world_size):
                 #        "train_grad_loss": train_grad_loss,
                 #        "val_grad_loss": val_grad_loss
                 #    },
-                #   epoch)
+                #    epoch)
                                                  
                 tbX_logger.add_scalar("lr", lr, epoch)
 
@@ -657,7 +657,7 @@ def train(rank, world_size):
     if rank == 0:
         save_path = os.path.join(
             cfg.PRETRAINED_PATH,
-            "%s_%s_%s_epoch%d_final_highweight.pth"
+            "%s_%s_%s_epoch%d_final_noskip_noaspp.pth"
             %(cfg.MODEL_NAME, cfg.MODEL_BACKBONE, cfg.DATA_NAME, cfg.TRAIN_EPOCHS))
         torch.save(model.state_dict(), save_path)
         print("FINISHED: %s has been saved." %save_path)

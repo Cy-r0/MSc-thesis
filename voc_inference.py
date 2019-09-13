@@ -87,7 +87,7 @@ def setup_model(device):
     pretrained_dict = torch.load(
         os.path.join(
             cfg.PRETRAINED_PATH,
-            "deeplabv3plus_multitask_xception_VOC2012_epoch40_final_trainval.pth"))
+            "deeplabv3plus_multitask_xception_VOC2012_epoch40_final.pth"))
 
     # Get rid of the word "module" in keys,
     # since this model is not being used with dataparallel anymore
@@ -122,7 +122,9 @@ def inference():
     end = torch.cuda.Event(enable_timing=True)
 
     model.eval()
-    timing_avg = []
+
+    model_timing_avg = []
+    pp_timing_avg = []
 
     with torch.no_grad():
 
@@ -170,13 +172,14 @@ def inference():
             seg = torch.unsqueeze(seg, 0)
             dist = torch.unsqueeze(dist, 0)
 
-            #start.record()
+            start.record()
 
             predicted_seg, predicted_dist = model(inputs)
 
-            #end.record()
-            #torch.cuda.synchronize()
-            #print("model time", start.elapsed_time(end))
+            end.record()
+            torch.cuda.synchronize()
+            model_timing_avg.append(start.elapsed_time(end))
+            tqdm.write("model time (cum. avg): %.2f" %(sum(model_timing_avg)/len(model_timing_avg)))
 
             # rescale predictions to original size
             predicted_seg = F.interpolate(
@@ -194,15 +197,16 @@ def inference():
             
             for pred_seg, pred_dist in zip(predicted_seg, predicted_dist):
 
-                #tic = timeit.default_timer()
+                tic = timeit.default_timer()
                 
-                #torch.cuda.synchronize()
+                torch.cuda.synchronize()
+
                 instances = utils.postprocess(pred_seg, pred_dist, energy_cut=3)
 
-                #torch.cuda.synchronize()
+                torch.cuda.synchronize()
                 toc = timeit.default_timer()
-                #timing_avg.append((toc-tic) * 1000)
-                #print("Cumulative avg pp time: %.2f" %(sum(timing_avg)/len(timing_avg)))
+                pp_timing_avg.append((toc-tic) * 1000)
+                tqdm.write("pp time (cum. avg): %.2f" %(sum(pp_timing_avg)/len(pp_timing_avg)))
 
 
                 if instances:
@@ -220,7 +224,7 @@ def inference():
 
 
     # Write results to json
-    with open("COCO_style_results/voc2012_val_deeplab_trainval_minarea1920.json", 'w') as f:
+    with open("COCO_style_results/voc2012_val_deeplab_noskip_noaspp_newpp.json", 'w') as f:
         json.dump(json_data, f)
 
 

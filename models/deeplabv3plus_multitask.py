@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import init
 
+from models.resnet50 import resnet50
 from models.ASPP import ASPP
 from models.xception import Xception
 
@@ -34,13 +35,20 @@ class Deeplabv3plus_multitask(nn.Module):
     At training time, a third branch is added to predict gradient direction.
     """
 
-    def __init__(self, seg_classes, dist_classes, third_branch):
+    def __init__(self, seg_classes, dist_classes, third_branch, backbone="xception"):
         super(Deeplabv3plus_multitask, self).__init__()
         self.third_branch = third_branch
 
-        self.backbone = Xception(
-            output_stride=OUTPUT_STRIDE,
-            bn_momentum=BN_MOMENTUM)
+        # Choose backbone
+        assert (backbone == "xception" or backbone == "resnet50",
+            "The specified backbone is invalid.")
+        if backbone == "xception":
+            self.backbone = Xception(
+                output_stride=OUTPUT_STRIDE,
+                bn_momentum=BN_MOMENTUM)
+        elif backbone == "resnet50":
+            self.backbone = resnet50(pretrained=True, progress=True)
+
         self.aspp = ASPP(
             dim_in=ASPP_IN_CH, 
             dim_out=ASPP_OUT_CH, 
@@ -60,7 +68,6 @@ class Deeplabv3plus_multitask(nn.Module):
                 bias=True),
             nn.BatchNorm2d(SHORTCUT_CH, momentum=BN_MOMENTUM),
             nn.ReLU(inplace=True))
-
         self.final_conv_1 = nn.Sequential(
             nn.Conv2d(ASPP_OUT_CH + SHORTCUT_CH,
                 ASPP_OUT_CH, 3, 1, padding=1, bias=True),
@@ -84,7 +91,6 @@ class Deeplabv3plus_multitask(nn.Module):
                 bias=True),
             nn.BatchNorm2d(SHORTCUT_CH, momentum=BN_MOMENTUM),
             nn.ReLU(inplace=True))
-
         self.final_conv_2 = nn.Sequential(
             nn.Conv2d(ASPP_OUT_CH + SHORTCUT_CH,
             ASPP_OUT_CH, 3, 1, padding=1, bias=True),
