@@ -138,6 +138,7 @@ def inference():
             dist = batch["dist"]
 
             # calculate size to rescale to
+            # (inference accuracy is higher when original aspect ratio is kept)
             original_h = inputs.shape[2]
             original_w = inputs.shape[3]
             if original_h > original_w:
@@ -195,6 +196,7 @@ def inference():
             predicted_seg = softmax(predicted_seg)
             predicted_dist = softmax(predicted_dist)
             
+            # Postprocess batch and measure timings
             for pred_seg, pred_dist in zip(predicted_seg, predicted_dist):
 
                 tic = timeit.default_timer()
@@ -208,10 +210,8 @@ def inference():
                 pp_timing_avg.append((toc-tic) * 1000)
                 tqdm.write("pp time (cum. avg): %.2f" %(sum(pp_timing_avg)/len(pp_timing_avg)))
 
-
                 if instances:
                     for instance in instances:
-
                         # encoded bytestring in mask needs to be converted to ascii
                         encoded_mask = mask.encode(np.asfortranarray(instance["segmentation"]))
                         encoded_mask["counts"] = encoded_mask["counts"].decode("ascii")

@@ -1,4 +1,4 @@
-# Ignore everything in this directory
+# Ignore everything in this directory because logs are massive files
 *
 # Except this file
 !.gitignore

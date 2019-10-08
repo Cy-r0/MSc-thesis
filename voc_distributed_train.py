@@ -96,11 +96,11 @@ def setup_dataloaders(rank):
     # Datasets
     VOC_train = VOCDualTask(
         cfg.DSET_ROOT,
-        image_set="trainval_hole",
+        image_set="train",
         transform=transform)
     VOC_val = VOCDualTask(
         cfg.DSET_ROOT,
-        image_set="train_25perc",
+        image_set="val",
         transform=transform)
     
     # Distributed samplers
@@ -136,7 +136,7 @@ def setup_model(rank):
     """
     Initialise model and load pretrained backbone weights.
     """
-    backbone = "resnet50"
+    backbone = "xception"
     
     # Initialise model
     model = Deeplabv3plus_multitask(

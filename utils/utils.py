@@ -76,6 +76,9 @@ def normalise_confusion_mat(confusion_mat):
 def postprocess_old(seg, dist, energy_cut, min_area=80, debug=False):
     """
     Extract object instances from neural network outputs (seg and dist).
+
+    WARNING: THIS IS OBSOLETE, SEE postprocess()
+
     Current pipeline:
         Binarise dist image at chosen energy level (lower=black, higher=white);
         Find contours on dist image;
@@ -283,10 +286,7 @@ def postprocess(seg, dist, energy_cut, min_area=900, check_lowenergy=False, debu
         plt.show()
 
     # Mask semantic with thresholded dist
-    masked_seg = torch.where(
-        dist_thres > 0,
-        seg_argmax,
-        dist_thres).byte()
+    masked_seg = torch.where(dist_thres > 0, seg_argmax, dist_thres).byte()
 
     # Show masked seg
     if debug:
