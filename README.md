@@ -15,6 +15,7 @@ Repo works on Ubuntu 18.04.2 LTS with:
 - matplotlib 3.1.0
 - seaborn 0.9.0
 - tensorboardx 1.7
+
 Additionally, PASCAL VOC 2012 devkit with augmented set needs to be downloaded and its root referenced in config.py.
 
 ## Installing
