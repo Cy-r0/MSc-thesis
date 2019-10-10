@@ -1,7 +1,7 @@
 # One-Stage Instance Segmentation with a Boundary Distance Representation
 
 ## Description
-One-stage deep learning pipeline for instance segmentation in images. Model takes in an image and generates a semantic segmentation and a watershed representation. These two are combined in postprocessing.
+One-stage deep learning pipeline for instance segmentation in images. The model takes in an image and generates a semantic segmentation and a watershed representation. These two outputs are then combined in postprocessing to yield a list of object instances present in the picture.
 
 ## Requirements
 Repo works on Ubuntu 18.04.2 LTS with:
