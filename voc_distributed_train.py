@@ -485,14 +485,7 @@ def train(rank, world_size):
                         "train_dist_loss": train_dist_loss,
                         "val_dist_loss": val_dist_loss
                     },
-                    epoch)
-                #tbX_logger.add_scalars(
-                #    "grad_loss", {
-                #        "train_grad_loss": train_grad_loss,
-                #        "val_grad_loss": val_grad_loss
-                #    },
-                #    epoch)
-                                                 
+                    epoch)  
                 tbX_logger.add_scalar("lr", lr, epoch)
 
                 # it seems like tensorboard doesn't like saving a lot of images,
@@ -537,15 +530,6 @@ def train(rank, world_size):
                         1,
                         cfg.DATA_RESCALE,
                         cfg.DATA_RESCALE).to(rank)
-                    # Normalise grad vectors for image drawing
-                    #grad_norm = torch.norm(train_predicted_grad, p=2, dim=1, keepdim=True)
-                    #train_predicted_grad = train_predicted_grad.div(grad_norm)
-                    #train_grad_tb = make_grid(torch.cat(
-                    #    (train_grad, blue_channel), 
-                    #    dim=1)).cpu().numpy()
-                    #train_grad_prediction_tb = make_grid(torch.cat(
-                    #    (train_predicted_grad, blue_channel),
-                    #    dim=1)).cpu().detach().numpy()                          
 
                     # Convert val images for plotting
                     val_input_tb = make_grid(val_inputs).cpu().numpy()
@@ -558,16 +542,7 @@ def train(rank, world_size):
                         val_dist.float().div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
                     val_dist_prediction_tb = make_grid(utils.colormap(
                         torch.argmax(val_predicted_dist, dim=1).float() \
-                        .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()
-                    # Normalise grad vectors for image drawing
-                    #grad_norm = torch.norm(val_predicted_grad, p=2, dim=1, keepdim=True)
-                    #val_predicted_grad = val_predicted_grad.div(grad_norm)
-                    #val_grad_tb = make_grid(torch.cat(
-                    #    (val_grad, blue_channel), 
-                    #    dim=1)).cpu().numpy()
-                    #val_grad_prediction_tb = make_grid(torch.cat(
-                    #    (val_predicted_grad, blue_channel),
-                    #    dim=1)).cpu().detach().numpy()                          
+                        .div(cfg.N_ENERGY_LEVELS).unsqueeze(1).cpu())).numpy()                         
 
                     # Training images
                     tbX_logger.add_image("train_input", train_input_tb, epoch)
@@ -581,12 +556,7 @@ def train(rank, world_size):
                         "train_dist_prediction",
                         train_dist_prediction_tb,
                         epoch)
-                    #tbX_logger.add_image("train_grad", train_grad_tb, epoch)
-                    #tbX_logger.add_image(
-                    #    "train_grad_prediction",
-                    #    train_grad_prediction_tb,
-                    #    epoch)
-                    
+
                     # Validation images
                     tbX_logger.add_image("val_input", val_input_tb, epoch)
                     tbX_logger.add_image("val_seg", val_seg_tb, epoch)
@@ -599,11 +569,6 @@ def train(rank, world_size):
                         "val_dist_prediction",
                         val_dist_prediction_tb,
                         epoch)
-                    #tbX_logger.add_image("val_grad", val_grad_tb, epoch)
-                    #tbX_logger.add_image(
-                    #    "val_grad_prediction",
-                    #    val_grad_prediction_tb,
-                    #    epoch)
 
                     # Divide unnormalised matrices
                     train_seg_confusion /= len(loader_train)
